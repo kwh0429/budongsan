@@ -29,11 +29,12 @@
             <div class="control-card">
                 <div class="upload-box">
                     <label for="csvFileInput" class="file-label">
-                        <span class="upload-icon">📁</span>
-                        <span class="upload-text">CSV 또는 Excel(.xlsx) 데이터 파일 선택</span>
-                        <span class="upload-sub">소득 및 주택가격 컬럼이 포함된 파일을 올려주세요</span>
+                        <span class="upload-icon">📂</span>
+                        <span class="upload-text">CSV 또는 Excel(.xlsx) 데이터 파일 선택 (다중 선택 가능)</span>
+                        <span class="upload-sub">여러 권역이나 연도별 파일을 한 번에 드래그하거나 선택하여 통합 분석하세요</span>
                     </label>
-                    <input type="file" id="csvFileInput" accept=".csv, .xlsx, .xls">
+                    <input type="file" id="csvFileInput" accept=".csv, .xlsx, .xls" multiple>
+                    <div id="fileChipsContainer" class="file-chips-container hidden"></div>
                     <span id="selectedFileName" class="selected-file-name">선택된 파일 없음</span>
                 </div>
                 <div class="button-group">

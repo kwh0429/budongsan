@@ -150,6 +150,30 @@ body {
     border: 1px solid var(--border);
 }
 
+.file-chips-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+    margin-top: 14px;
+    max-height: 120px;
+    overflow-y: auto;
+}
+
+.file-chip {
+    background: #fff;
+    border: 1px solid #bfdbfe;
+    color: var(--primary);
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 9999px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    box-shadow: 0 1px 2px rgba(37, 99, 235, 0.05);
+}
+
 .button-group {
     display: flex;
     gap: 16px;

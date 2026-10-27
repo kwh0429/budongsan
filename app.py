@@ -248,47 +248,74 @@ def index():
 @app.route("/analyze", methods=["POST"])
 def analyze():
     """
-    데이터셋(업로드 파일 또는 기본 샘플)을 분석하여 시각화 통계 데이터를 반환합니다.
+    단일 또는 다중 데이터셋 파일을 병합 분석하여 통합 통계 및 시각화 데이터를 반환합니다.
     """
     try:
         use_sample = request.form.get("use_sample", "false").lower() == "true"
+        all_dfs = []
+        is_any_income_synthesized = False
+        uploaded_file_names = []
 
         if use_sample:
             sample_path = os.path.join(app.root_path, "data", "sample_housing_income.csv")
             if not os.path.exists(sample_path):
                 return jsonify({"success": False, "error": "기본 샘플 데이터셋 파일을 찾을 수 없습니다."}), 404
             logger.info("Loading sample dataset: data/sample_housing_income.csv")
-            df = pd.read_csv(sample_path, encoding="utf-8-sig")
+            raw_df = pd.read_csv(sample_path, encoding="utf-8-sig")
+            clean_df, is_synth = standardize_dataframe(raw_df)
+            all_dfs.append(clean_df)
+            uploaded_file_names.append("sample_housing_income.csv")
         else:
-            if "file" not in request.files:
-                return jsonify({"success": False, "error": "업로드된 파일이 없습니다."}), 400
-            file = request.files["file"]
-            if file.filename == "":
-                return jsonify({"success": False, "error": "선택된 파일이 없습니다."}), 400
+            # 다중 파일 수신 지원 ('files' 또는 단일 'file')
+            uploaded_files = request.files.getlist("files")
+            if not uploaded_files or (len(uploaded_files) == 1 and uploaded_files[0].filename == ""):
+                if "file" in request.files and request.files["file"].filename != "":
+                    uploaded_files = [request.files["file"]]
+                else:
+                    return jsonify({"success": False, "error": "업로드된 파일이 없습니다. 하나 이상의 파일을 선택해 주세요."}), 400
 
-            filename = file.filename.lower()
-            if filename.endswith(".csv"):
-                try:
-                    df = pd.read_csv(file, encoding="utf-8-sig")
-                except UnicodeDecodeError:
-                    file.seek(0)
-                    df = pd.read_csv(file, encoding="cp949")
-            elif filename.endswith((".xls", ".xlsx")):
-                df = pd.read_excel(file)
-            else:
-                return jsonify({"success": False, "error": "CSV 또는 Excel(.xlsx) 형식의 파일만 지원합니다."}), 400
+            for file in uploaded_files:
+                if not file or file.filename == "":
+                    continue
+                filename = file.filename
+                uploaded_file_names.append(filename)
+                fname_lower = filename.lower()
 
-        # 데이터 정제 및 통계 계산
-        df_standard, is_income_synthesized = standardize_dataframe(df)
-        stats = process_housing_statistics(df_standard)
-        stats["is_income_synthesized"] = is_income_synthesized
+                # 파일 파싱 (CSV 또는 Excel)
+                if fname_lower.endswith(".csv"):
+                    try:
+                        raw_df = pd.read_csv(file, encoding="utf-8-sig")
+                    except UnicodeDecodeError:
+                        file.seek(0)
+                        raw_df = pd.read_csv(file, encoding="cp949")
+                elif fname_lower.endswith((".xls", ".xlsx")):
+                    raw_df = pd.read_excel(file)
+                else:
+                    return jsonify({"success": False, "error": f"지원하지 않는 파일 형식입니다: {filename} (CSV 또는 Excel 파일만 지원)"}), 400
+
+                clean_df, is_synth = standardize_dataframe(raw_df)
+                if is_synth:
+                    is_any_income_synthesized = True
+                all_dfs.append(clean_df)
+
+        if not all_dfs:
+            return jsonify({"success": False, "error": "유효한 데이터 행이 포함된 파일이 없습니다."}), 400
+
+        # 여러 개의 데이터프레임을 하나로 통합 병합
+        combined_df = pd.concat(all_dfs, ignore_index=True)
+        stats = process_housing_statistics(combined_df)
+        stats["is_income_synthesized"] = is_any_income_synthesized
+        stats["file_count"] = len(uploaded_file_names)
+        stats["file_names"] = uploaded_file_names
 
         notice_msg = ""
-        if is_income_synthesized:
-            notice_msg = "ℹ️ 업로드하신 파일에 '소득' 컬럼이 없어, 주택가격 분포를 바탕으로 [통계청 가계금융복지조사 소득 5분위 표준 지표]를 자동 매칭하여 분석했습니다."
-            logger.info(notice_msg)
+        if len(uploaded_file_names) > 1:
+            notice_msg = f"📁 총 {len(uploaded_file_names)}개의 데이터 파일({', '.join(uploaded_file_names[:3])}{' 등' if len(uploaded_file_names) > 3 else ''})을 성공적으로 병합하여 통합 분석했습니다."
+        if is_any_income_synthesized:
+            prefix = " " if notice_msg else ""
+            notice_msg += f"{prefix}ℹ️ 소득 컬럼이 없는 파일의 경우 [통계청 가계금융복지조사 표준 소득 5분위 지표]를 자동 매칭하여 종합 산출했습니다."
 
-        logger.info(f"Data analysis complete: {stats['kpi']['total_records']} rows processed.")
+        logger.info(f"Consolidated analysis complete: {stats['kpi']['total_records']} total rows across {len(uploaded_file_names)} files.")
         return jsonify({"success": True, "data": stats, "notice": notice_msg})
 
     except Exception as e:
@@ -332,28 +359,56 @@ def ai_insight():
 """
             return jsonify({"success": True, "insight": mock_report})
 
-        # Gemini 프롬프트 구성
+        # Gemini 프롬프트 구성 (전문 거시경제/부동산 리서치 보고서 수준)
         prompt = f"""
-당신은 대한민국 거시경제 및 부동산 정책을 분석하는 Senior 데이터 이코노미스트입니다.
-아래의 [국내 소득수준별 부동산가격 분포 및 통계 데이터]를 바탕으로, 비개발자 및 일반 시민도 한눈에 이해할 수 있도록 명쾌하고 인사이트가 넘치는 데이터 분석 리포트를 마크다운(Markdown) 형식으로 작성해 주세요.
+당신은 한국개발연구원(KDI) 및 한국은행 거시경제/부동산 금융팀의 수석 연구위원(Chief Economist)입니다.
+제공된 [소득 분위별 국내 부동산 가격 분포 및 통합 통계 데이터]를 심층 분석하여, 최고 수준의 전문성과 실용성을 갖춘 **「대한민국 소득수준별 주택가격 분포 및 자산 양극화 심층 경제분석 보고서」**를 마크다운(Markdown) 형식으로 작성해 주십시오.
 
-[분석 통계 데이터]
-- 총 분석 표본 수: {kpi['total_records']}건
+=========================================
+[통합 실증 분석 통계 데이터]
+- 총 분석 표본 수: {kpi['total_records']}건 (분석 대상 파일 수: {stats.get('file_count', 1)}개)
 - 전체 가구 연평균 소득: {kpi['avg_income_manwon']:,}만원
-- 전체 주택 평균 매매가격: {kpi['avg_price_manwon']:,}만원 (중위가격: {kpi['median_price_manwon']:,}만원)
-- 전체 평균 PIR(연소득 대비 주택가격 배수): {kpi['avg_pir']}배
-- 소득 5분위(최상위 20%) vs 1분위(최하위 20%) 소득 격차: {kpi['income_gap_ratio']}배
-- 주택가격 5분위 vs 1분위 자산 격차: {kpi['asset_gap_ratio']}배
-- 소득 분위별 PIR 현황: {dict(zip(quintile['labels'], quintile['pirs']))}
-- 주요 권역별 평균 PIR 상위 지역: {[f"{r['region']}({r['pir']}배)" for r in regions]}
+- 전체 주택 평균 매매가격: {kpi['avg_price_manwon']:,}만원 (중위 매매가격: {kpi['median_price_manwon']:,}만원)
+- 전체 평균 PIR (연소득 대비 주택가격 배수): {kpi['avg_pir']}배
+- 소득 5분위 배율 (최상위 20% 소득 / 최하위 20% 소득): {kpi['income_gap_ratio']}배
+- 주택 자산 5분위 배율 (최상위 20% 주택가 / 최하위 20% 주택가): {kpi['asset_gap_ratio']}배
+- 분위별 세부 PIR 지표: {dict(zip(quintile['labels'], quintile['pirs']))}
+- 분위별 평균 소득: {dict(zip(quintile['labels'], [f"{x:,}만원" for x in quintile['incomes']]))}
+- 분위별 평균 주택가: {dict(zip(quintile['labels'], [f"{x:,}만원" for x in quintile['prices']]))}
+- 권역별 PIR 랭킹 상위 지역: {[f"{r['region']} (PIR {r['pir']}배)" for r in regions]}
+=========================================
 
-[작성 지침]
-1. **헤드라인 & 3줄 핵심 요약**: 가장 눈에 띄는 현상을 직관적인 비유와 함께 3문장으로 요약하세요.
-2. **소득 격차 vs 자산 격차의 역설**: 소득 격차({kpi['income_gap_ratio']}배)보다 주택가격 격차({kpi['asset_gap_ratio']}배)가 더 큰 현상이 우리 사회의 부의 축적에 어떤 영향을 주는지 분석하세요.
-3. **PIR 지표로 본 '내 집 마련' 현실**: PIR 수치(소득을 전혀 안 쓰고 모아야 하는 기간)를 일반 직장인이나 서민의 관점에서 생생하게 해설하세요. 특히 저소득층(1분위)과 고소득층(5분위)의 PIR 차이가 의미하는 바를 짚어주세요.
-4. **지역별 주거 양극화**: 상위 지역과 지방 간의 주거 사다리 격차를 지적하세요.
-5. **결론 및 시사점**: 무주택자, 청년층, 정책 입안자 입장에서 고려해야 할 핵심 포인트를 2~3줄로 정리해 주세요.
-6. 전문용어는 항상 알기 쉽게 풀어서 설명하고, 읽기 편한 불릿 포인트와 강조 문구를 적절히 활용하세요.
+[보고서 작성 가이드라인 및 필수 구성 항목]
+
+반드시 아래 6대 섹션 체계를 엄격히 유지하고, 데이터에 제시된 정확한 통계 수치를 풍부하게 인용하여 전문적이고 학술적인 품격과 가독성을 갖추어 서술하십시오:
+
+### 1. 📌 총괄 요약 (Executive Summary)
+- 현재 데이터가 보여주는 대한민국 주택 시장의 본질을 날카로운 통찰력으로 진단하는 **핵심 요약 3개 문장**을 볼드체 불릿으로 제시하십시오.
+- 현재의 PIR 수준({kpi['avg_pir']}배)과 자산 양극화의 위험도(Level)를 명확히 판정하십시오.
+
+### 2. 🌐 PIR(Price to Income Ratio) 지표의 국제 비교 및 주거 진입 장벽 진단
+- UN-Habitat 및 세계은행(World Bank)의 적정 권고 기준치(PIR 3.0~5.0배)와 비교하여, 현재 평균 PIR {kpi['avg_pir']}배가 의미하는 경제적 무게를 해석하십시오.
+- 특히 가구가 연소득을 한 푼도 쓰지 않고 모아야 하는 기간({kpi['avg_pir']}년)이 실제 소비 성향(평균 저축률 25~30% 가정)을 감안할 때 실질적으로 **몇 년의 자산 형성 기간(최소 {round(kpi['avg_pir'] / 0.3, 1)}년 이상)**을 요구하는지 현실적인 관점에서 수치로 입증하십시오.
+
+### 3. ⚖️ 소득 불평등 vs 자산 양극화의 '디커플링(Decoupling)' 구조 분석
+- 소득 격차({kpi['income_gap_ratio']}배) 대비 주택 자산 격차({kpi['asset_gap_ratio']}배)의 불일치 현상을 지적하십시오.
+- "근로소득의 차이보다 부동산 자산 상승에 따른 부의 축적 속도가 압도적인 현상"이 어떻게 계층 간 '주거 사다리'를 단절시키고 있는지 자본수익률(r)과 경제성장률(g)의 관점을 접목하여 심층 논증하십시오.
+
+### 4. 🗺️ 공간적 불평등: 권역별 PIR 격차와 주거 양극화
+- 상위 권역({regions[0]['region'] if regions else '수도권 핵심지'}, PIR {regions[0]['pir'] if regions else '-'}배)과 하위 권역 간의 격차를 대비하십시오.
+- 핵심 지역의 진입 장벽이 청년층 및 신규 진입 가구의 공간적 이동성을 어떻게 제한하고 지역 간 자산 격차를 영착화하는지 분석하십시오.
+
+### 5. 📉 거시경제 및 가계 건전성에 미치는 파급 효과
+- 고금리 및 DSR(총부채원리금상환비율) 규제 환경 하에서 가계의 원리금 상환 부담(Debt Burden)이 민간 소비를 위축시키는 메커니즘을 짚으십시오.
+- 과도한 주거 비용이 청년층의 결혼 기피, 출산율 저하, 가계 유동성 경직성으로 전이되는 사회경제적 비용을 진단하십시오.
+
+### 6. 💡 정책 제언 및 가계 경제 실행 전략
+- **정부 및 정책 당국**: 공급 정책, 주거 사다리 복원, 금융 및 조세 정책 측면의 핵심 과제 2가지 제시.
+- **실수요자 및 무주택 가계**: 무리한 영끌 지양, 분위별 현실적 자산 형성 경로 및 내 집 마련 로드맵 조언.
+
+[문체 요건]
+- 객관적이고 신뢰감 있는 경제 리포트 문체(~함, ~로 분석됨, ~가 요구됨 등 전문적 평서체)를 유지하십시오.
+- 표나 인용 블록(blockquote), 굵은 글씨를 적재적소에 활용하여 시각적 보고서 완성도를 극대화하십시오.
 """
 
         logger.info("Requesting AI insight from Gemini model...")

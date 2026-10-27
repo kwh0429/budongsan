@@ -12,6 +12,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // DOM 요소 참조
     const fileInput = document.getElementById("csvFileInput");
     const selectedFileName = document.getElementById("selectedFileName");
+    const fileChipsContainer = document.getElementById("fileChipsContainer");
     const btnUploadAnalyze = document.getElementById("btnUploadAnalyze");
     const btnSampleAnalyze = document.getElementById("btnSampleAnalyze");
 
@@ -27,13 +28,30 @@ document.addEventListener("DOMContentLoaded", () => {
     const btnCopyReport = document.getElementById("btnCopyReport");
     const btnDownloadReport = document.getElementById("btnDownloadReport");
 
-    // 파일 선택 이벤트
+    // 파일 다중 선택 이벤트
     fileInput.addEventListener("change", (e) => {
-        if (e.target.files && e.target.files[0]) {
-            selectedFileName.textContent = `선택됨: ${e.target.files[0].name}`;
+        const files = e.target.files;
+        fileChipsContainer.innerHTML = "";
+
+        if (files && files.length > 0) {
             hideError();
+            if (files.length === 1) {
+                selectedFileName.textContent = `선택됨: ${files[0].name}`;
+                fileChipsContainer.classList.add("hidden");
+            } else {
+                selectedFileName.textContent = `📁 총 ${files.length}개 파일 선택됨 (자동 병합 분석)`;
+                fileChipsContainer.classList.remove("hidden");
+
+                Array.from(files).forEach((file) => {
+                    const chip = document.createElement("span");
+                    chip.className = "file-chip";
+                    chip.innerHTML = `📄 ${file.name} <small>(${(file.size / 1024).toFixed(0)}KB)</small>`;
+                    fileChipsContainer.appendChild(chip);
+                });
+            }
         } else {
             selectedFileName.textContent = "선택된 파일 없음";
+            fileChipsContainer.classList.add("hidden");
         }
     });
 
@@ -45,13 +63,13 @@ document.addEventListener("DOMContentLoaded", () => {
         executeAnalysis({ useSample: true });
     });
 
-    // 파일 데이터 분석 클릭
+    // 파일 데이터 분석 클릭 (다중 파일 지원)
     btnUploadAnalyze.addEventListener("click", () => {
-        if (!fileInput.files || !fileInput.files[0]) {
-            showError("분석할 CSV 또는 Excel(.xlsx) 파일을 먼저 선택해 주세요.");
+        if (!fileInput.files || fileInput.files.length === 0) {
+            showError("분석할 CSV 또는 Excel(.xlsx) 파일을 하나 이상 선택해 주세요.");
             return;
         }
-        executeAnalysis({ file: fileInput.files[0] });
+        executeAnalysis({ files: fileInput.files });
     });
 
     // 리포트 클립보드 복사
@@ -85,17 +103,27 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     /**
-     * 데이터 분석 요청 실행
+     * 데이터 분석 요청 실행 (다중 파일 지원)
      */
-    async function executeAnalysis({ useSample = false, file = null }) {
+    async function executeAnalysis({ useSample = false, files = null, file = null }) {
         hideError();
-        showLoading("데이터를 정제하고 소득 분위 및 PIR 지표를 산출하는 중입니다...");
 
         const formData = new FormData();
         if (useSample) {
+            showLoading("기본 샘플 데이터를 정제하고 소득 분위 및 PIR 지표를 산출하는 중입니다...");
             formData.append("use_sample", "true");
+        } else if (files && files.length > 0) {
+            const count = files.length;
+            showLoading(`${count}개의 파일을 병합 및 정제하여 통합 분석을 수행하는 중입니다...`);
+            for (let i = 0; i < count; i++) {
+                formData.append("files", files[i]);
+            }
         } else if (file) {
-            formData.append("file", file);
+            showLoading("데이터를 정제하고 소득 분위 및 PIR 지표를 산출하는 중입니다...");
+            formData.append("files", file);
+        } else {
+            showError("분석할 파일이 제공되지 않았습니다.");
+            return;
         }
 
         try {
