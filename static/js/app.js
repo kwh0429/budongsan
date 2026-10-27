@@ -750,7 +750,10 @@ document.addEventListener("DOMContentLoaded", () => {
             // 로딩 말풍선을 실제 답변으로 교체
             const loadingBubble = document.getElementById(loadingId);
             if (loadingBubble) {
+                const senderEl = loadingBubble.querySelector(".bubble-sender");
                 const bodyEl = loadingBubble.querySelector(".bubble-body");
+                const modelBadge = resData.model ? ` <span class="badge" style="font-size:0.72rem; padding:2px 7px; background:var(--brand-accent-light); color:var(--brand-accent); font-weight:700;">${resData.model}</span>` : "";
+                senderEl.innerHTML = `AI 데이터 이코노미스트${modelBadge}`;
                 bodyEl.innerHTML = marked.parse(resData.answer);
             }
 

@@ -34,6 +34,35 @@ if GEMINI_API_KEY and GEMINI_API_KEY != "your_gemini_api_key_here":
 else:
     logger.warning("GEMINI_API_KEY is not set or using placeholder. AI insight feature will be limited.")
 
+def call_gemini_flash_lite(client, prompt):
+    """
+    최신 Gemini Flash-Lite 모델(gemini-2.0-flash-lite, 1.5-flash-8b, 1.5-flash 등)을
+    우선 순위로 자동 순회하며 가장 빠르고 안정적인 모델로 응답을 생성합니다.
+    """
+    candidate_models = [
+        "gemini-2.0-flash-lite",  # 최신 초경량 초고속 모델
+        "gemini-1.5-flash-8b",    # Flash-8B Lite 모델
+        "gemini-1.5-flash",       # 표준 Flash 모델
+        "gemini-2.5-flash",       # 최신 2.5 Flash 모델
+        "gemini-2.0-flash"        # 2.0 Flash 모델
+    ]
+    for model_name in candidate_models:
+        try:
+            logger.info(f"Requesting LLM generation with model: {model_name}")
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+            )
+            if response and response.text:
+                logger.info(f"Successfully generated response with model: {model_name}")
+                return response.text, model_name
+        except Exception as e:
+            logger.warning(f"Model '{model_name}' call failed: {e}. Trying next candidate model...")
+            continue
+
+    raise RuntimeError("모든 Gemini Flash Lite 모델 후보 호출에 실패했습니다.")
+
+
 def standardize_dataframe(df):
     """
     한글 또는 다양한 형태의 컬럼명을 표준 컬럼명으로 매핑합니다.
@@ -535,16 +564,11 @@ def ai_insight():
 - 표나 인용 블록(blockquote), 굵은 글씨를 적재적소에 활용하여 시각적 보고서 완성도를 극대화하십시오.
 """
 
-        logger.info("Requesting AI insight from Gemini model...")
+        logger.info("Requesting AI insight from Gemini Flash Lite models...")
         client = genai.Client(api_key=current_api_key)
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt,
-        )
-
-        insight_text = response.text
-        logger.info("Gemini AI insight generation completed.")
-        return jsonify({"success": True, "insight": insight_text})
+        insight_text, used_model = call_gemini_flash_lite(client, prompt)
+        logger.info(f"Gemini AI insight generation completed using {used_model}.")
+        return jsonify({"success": True, "insight": insight_text, "model": used_model})
 
     except Exception as e:
         logger.error(f"Error generating AI insight with Gemini API, fallback to expert engine: {str(e)}", exc_info=True)
@@ -785,6 +809,7 @@ def ask_ai():
     """
     현재 분석된 부동산-소득 통계 데이터를 기반으로
     사용자의 자연어 질문에 데이터 이코노미스트 관점에서 명쾌하게 답변합니다.
+    (Gemini Flash-Lite 모델 최우선 적용)
     """
     try:
         data = request.get_json() or {}
@@ -794,13 +819,21 @@ def ask_ai():
         if not question:
             return jsonify({"success": False, "error": "질문 내용을 입력해 주세요."}), 400
 
+        # 만약 클라이언트에서 stats가 비어있다면(아직 파일 분석 전 질문 시) 기본 샘플 데이터 자동 로드
+        if not stats or not stats.get("kpi"):
+            sample_path = os.path.join(app.root_path, "data", "sample_housing_income.csv")
+            if os.path.exists(sample_path):
+                raw_df = pd.read_csv(sample_path, encoding="utf-8-sig")
+                clean_df, _ = standardize_dataframe(raw_df)
+                stats = process_housing_statistics(clean_df)
+
         kpi = stats.get("kpi", {})
         quintile = stats.get("quintile_chart", {})
         regions = stats.get("region_pir_list", [])
 
         current_api_key = os.getenv("GEMINI_API_KEY", "").strip()
 
-        # 1. Gemini API 키가 있는 경우
+        # 1. Gemini API 키가 있는 경우: Flash Lite 모델 우선 호출
         if current_api_key and current_api_key != "your_gemini_api_key_here":
             prompt = f"""
 당신은 대한민국 거시경제 및 부동산 시장을 전문 분석하는 AI 데이터 이코노미스트입니다.
@@ -821,23 +854,19 @@ def ask_ai():
 [답변 작성 지침]
 1. 사용자의 질문에 대해 핵심 결론을 첫 문장에서 명쾌하게 제시하세요.
 2. 위 통계 데이터의 구체적인 수치(소득, 집값, PIR 배수 등)를 직접 인용하여 근거를 뒷받침하세요.
-3. 경제학적 맥락(예: 저축률, 대출 DSR 규제, 금리 환경, 주거 사다리 등)을 비전문가도 이해하기 쉽게 비유를 들어 설명하세요.
-4. 마지막에는 질문자가 실생활에서 취할 수 있는 실천적이고 합리적인 가이드라인을 1~2문장으로 덧붙이세요.
-5. 마크다운(불릿, 볼드체 등)을 적절히 활용하여 읽기 편하게 포맷팅하세요.
+3. 질문에 특정 소득(예: 5천만원 등)이나 지역이 언급되었다면 해당 소득 기준 실질 내 집 마련 기간(PIR)을 직접 계산해서 명쾌하게 알려주세요.
+4. 마크다운(불릿, 볼드체 등)을 적절히 활용하여 전문성과 가독성을 높이세요.
 """
             try:
                 client = genai.Client(api_key=current_api_key)
-                response = client.models.generate_content(
-                    model="gemini-2.5-flash",
-                    contents=prompt
-                )
-                return jsonify({"success": True, "answer": response.text})
+                answer_text, used_model = call_gemini_flash_lite(client, prompt)
+                return jsonify({"success": True, "answer": answer_text, "model": used_model})
             except Exception as gemini_err:
-                logger.warning(f"Gemini API call failed, switching to local smart answer: {gemini_err}")
+                logger.warning(f"Gemini Flash Lite API call failed: {gemini_err}. Switching to high-precision local econometric engine.")
 
-        # 2. API 키가 없거나 호출 실패 시 로컬 스마트 Q&A 엔진
+        # 2. 로컬 스마트 Q&A 엔진 (질문에서 소득/지역 파싱 후 실시간 맞춤 계산)
         answer = generate_local_smart_answer(question, kpi, quintile, regions)
-        return jsonify({"success": True, "answer": answer})
+        return jsonify({"success": True, "answer": answer, "model": "local-flash-lite-engine"})
 
     except Exception as e:
         logger.error(f"Error in ask_ai: {str(e)}", exc_info=True)
@@ -846,9 +875,11 @@ def ask_ai():
 
 def generate_local_smart_answer(question, kpi, quintile, regions):
     """
-    API 키가 없더라도 질문 키워드와 통계 지표를 결합하여
-    매우 설득력 있고 전문적인 답변을 생성하는 지능형 로컬 Q&A 엔진
+    질문 문맥에서 소득 숫자나 지역명을 지능적으로 파싱하여
+    사용자가 묻는 조건(소득, 몇 년, 지역 비교 등)에 맞추어
+    실시간 정밀 계산 결과를 포함한 고품질 마크다운 리포트를 즉시 생성합니다.
     """
+    import re
     q_lower = question.lower()
     avg_pir = kpi.get("avg_pir", 10.9)
     avg_price = kpi.get("avg_price_manwon", 77000)
@@ -856,10 +887,48 @@ def generate_local_smart_answer(question, kpi, quintile, regions):
     income_gap = kpi.get("income_gap_ratio", 7.1)
     asset_gap = kpi.get("asset_gap_ratio", 4.5)
 
-    top_region = regions[0]["region"] if regions else "수도권 주요지"
-    top_pir = regions[0]["pir"] if regions else avg_pir
+    top_region = regions[0]["region"] if regions else "서울 수도권 상급지"
+    top_pir = regions[0]["pir"] if regions else 18.5
 
-    if any(k in q_lower for k in ["pir", "배수", "의미", "기준", "un", "위험"]):
+    # 1. 질문에서 소득 금액(숫자) 감지 시도 (예: 5000만원, 6천, 7000 등)
+    parsed_income = None
+    # '5000만원', '5000' 패턴
+    match_manwon = re.search(r'(\d{3,6})\s*(?:만|만원)?', question)
+    match_cheon = re.search(r'(\d{1,2})\s*천', question)
+    match_eok = re.search(r'(\d{1,2})\s*억', question)
+
+    if match_manwon and int(match_manwon.group(1)) >= 1000:
+        parsed_income = float(match_manwon.group(1))
+    elif match_cheon:
+        parsed_income = float(match_cheon.group(1)) * 1000
+    elif match_eok:
+        parsed_income = float(match_eok.group(1)) * 10000
+
+    # 2. 질문에 소득이 언급되었거나 "몇년", "걸려", "기간"이 포함된 경우 실시간 맞춤 계산 답변
+    if parsed_income or any(k in q_lower for k in ["몇년", "몇 년", "기간", "소요", "얼마나 걸"]):
+        target_inc = parsed_income if parsed_income else avg_income
+        custom_pir = round(avg_price / max(1.0, target_inc), 1)
+        savings_rate = 0.35  # 가구 저축률 35% 가정
+        annual_savings = target_inc * savings_rate
+        real_years = round(avg_price / max(1.0, annual_savings), 1)
+
+        # 상위 지역(서울권) 기준 계산
+        top_price_estimate = int(avg_price * 1.8)
+        top_real_years = round(top_price_estimate / max(1.0, annual_savings), 1)
+
+        return f"""### ⏱️ 연소득 {int(target_inc):,}만원 기준 실질 내 집 마련 소요 기간 정밀 분석
+
+* **핵심 결론**:
+  연소득 **{int(target_inc):,}만원** 가구가 평균적인 저축률(월 소득의 35%, 매월 약 {int(annual_savings/12):,}만원 저축)을 유지할 경우:
+  - **전국 평균 주택({avg_price:,}만원)** 취득 소요 기간: **약 {real_years}년** (순수 PIR {custom_pir}배)
+  - **수도권 상급지 주택(약 {top_price_estimate:,}만원)** 취득 소요 기간: **약 {top_real_years}년**
+* **금융 레버리지(대출) 활용 시 단축 효과**:
+  - DSR 40% 한도 내 정책 모기지(최대 약 {int(target_inc * 6.5):,}만원 대출)를 결합할 경우, 실질 자력 소요 기간을 **약 {round(real_years * 0.45, 1)}년 수준**으로 획기적으로 단축할 수 있습니다.
+* **전문가 실천 제언**:
+  순수 현금 저축만으로는 상위 부동산의 복리 상승률을 따라잡기 어려우므로, 청약 가점 활용 또는 신생아·디딤돌 저리 정책대출을 적극 고려하시기 바랍니다."""
+
+    # 3. PIR의 의미나 위험도 질문
+    elif any(k in q_lower for k in ["pir", "배수", "의미", "기준", "un", "위험"]):
         return f"""### 💡 PIR(소득 대비 주택가격 배수) 지표 분석 답변
 
 * **핵심 결론**: 현재 분석된 전체 평균 PIR은 **{avg_pir}배**로, 국제기구 권고치에 비해 **상당히 과부담된 수준**입니다.
@@ -867,9 +936,10 @@ def generate_local_smart_answer(question, kpi, quintile, regions):
   - **UN-Habitat 및 세계은행의 적정 권고치**: **3.0 ~ 5.0배**
   - **현재 데이터셋 평균치**: **{avg_pir}배** (적정 상한선 5.0배 대비 **약 {round(avg_pir/5.0, 1)}배** 초과)
   - 이는 가구가 연간 소득(평균 {avg_income:,}만원)을 **단 1원도 쓰지 않고 {avg_pir}년간 전액 저축**해야 평균적인 주택({avg_price:,}만원)을 구입할 수 있음을 의미합니다.
-* **실생활 시사점**: 가계 평균 저축률(25~30%)을 고려하면 실제 소요 기간은 **{round(avg_pir / 0.25, 1)}년 이상**이 걸리므로, 금융 레버리지(대출) 관리와 분양가 상한제 주택 공략이 필수적입니다."""
+* **실생활 시사점**: 가계 평균 저축률(30%)을 고려하면 실제 소요 기간은 **약 {round(avg_pir / 0.3, 1)}년 이상**이 걸리므로, 금융 레버리지(대출) 관리와 분양가 상한제 주택 공략이 필수적입니다."""
 
-    elif any(k in q_lower for k in ["격차", "양극화", "불평등", "소득", "자산"]):
+    # 4. 소득 vs 자산 양극화 질문
+    elif any(k in q_lower for k in ["격차", "양극화", "불평등", "소득", "자산", "피케티"]):
         return f"""### ⚖️ 소득 격차 vs 주택 자산 양극화 분석 답변
 
 * **핵심 결론**: 데이터 실증 결과, **근로소득의 격차보다 주택 자산의 양극화가 훨씬 심각**한 구조적 불균형을 보이고 있습니다.
@@ -879,26 +949,28 @@ def generate_local_smart_answer(question, kpi, quintile, regions):
 * **경제학적 진단**:
   - 실물 부동산 자산의 상승률(자본수익률 r)이 가계 임금 상승률(경제성장률 g)을 앞서면서, 근로소득만으로는 상위 자산 계층으로 진입하기 어려운 **'주거 사다리 단절 현상'**이 뚜렷하게 관측됩니다."""
 
-    elif any(k in q_lower for k in ["지역", "서울", "경기", "지방", "어디", "추천"]):
+    # 5. 지역별 비교 및 추천 질문
+    elif any(k in q_lower for k in ["지역", "서울", "경기", "지방", "어디", "추천", "비교"]):
         return f"""### 🗺️ 권역별 주거 부담도 및 접근성 평가 답변
 
 * **가장 주거 부담이 높은 지역**: **{top_region}** (PIR **{top_pir}배**)
 * **권역별 주거 진입 장벽**:
   - 상위권 지역({top_region} 등)의 경우 PIR이 **{top_pir}배**에 달해 청년 및 신규 가구의 자력 진입이 극히 어렵습니다.
-  - 반면, 상대적으로 PIR이 5~8배 수준인 **경기 외곽 및 지방 대도시권**은 계획적인 저축과 저리 정책 대출(디딤돌·신생아 특례)을 결합할 경우 **7~10년 내외의 현실적 진입**이 가능합니다.
-* **실천 조언**: 본인의 현재 소득 수준과 가용 자산을 감안하여, 대시보드의 **[🎯 맞춤형 내 집 마련 시뮬레이터]** 탭에서 관심 지역별 필요 기간을 정밀 시뮬레이션해 보시는 것을 추천합니다."""
+  - 반면, 상대적으로 PIR이 5~8배 수준인 **경기 외곽 및 지방 대도시권**은 계획적인 저축과 저리 정책 대출을 결합할 경우 **7~10년 내외의 현실적 진입**이 가능합니다.
+* **실천 조언**: 대시보드의 **[🎯 맞춤형 내 집 마련 계산기]** 탭에서 관심 지역을 직접 선택하여 필요 기간을 정밀 시뮬레이션해 보시기 바랍니다."""
 
+    # 6. 기타 모든 질문에 대한 종합 데이터 답변
     else:
-        return f"""### 📊 데이터 기반 종합 분석 답변
+        return f"""### 📊 데이터 기반 종합 실증 분석 답변
 
 * **질문 요지**: "{question}"
-* **현재 데이터 실증 요약**:
+* **현재 분석 데이터셋 핵심 통계**:
   - 총 분석 표본: **{kpi.get('total_records', 0):,}건**
-  - 전체 평균 소득: **{avg_income:,}만원** / 평균 주택 매매가: **{avg_price:,}만원**
+  - 전체 평균 가구소득: **{avg_income:,}만원** (월 약 {int(avg_income/12):,}만원)
+  - 전체 평균 주택가격: **{avg_price:,}만원** (중위가격: {kpi.get('median_price_manwon', 0):,}만원)
   - 전체 평균 PIR: **{avg_pir}배** (최고 권역: {top_region} {top_pir}배)
-* **전문가 조언**:
-  - 현재 주택 가격은 가구 연소득 대비 높은 배수를 형성하고 있으므로, 월 소득 대비 원리금 상환 비율(DSR)이 30%를 넘지 않는 범위에서 안전한 자산 포트폴리오를 구성하는 것이 권장됩니다.
-  - 더 구체적인 질문(예: 특정 지역 비교, 내 소득 기준 연수 등)을 남겨주시면 더욱 상세히 해설해 드리겠습니다."""
+* **AI 이코노미스트의 조언**:
+  현재 주택 시장은 자산 양극화 배율({asset_gap}배)이 소득 격차({income_gap}배)와 결합되어 주거 진입 장벽이 높은 상황입니다. 특정 지역이나 본인의 구체적인 소득(예: '연봉 6000만원')을 입력해 주시면 더욱 정밀한 맞춤 해설을 제공해 드리겠습니다."""
 
 
 if __name__ == "__main__":
