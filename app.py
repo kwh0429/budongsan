@@ -560,6 +560,222 @@ def ai_insight():
             return jsonify({"success": False, "error": f"AI 분석 리포트 생성 중 오류가 발생했습니다: {str(e)}"}), 500
 
 
+@app.route("/simulate-affordability", methods=["POST"])
+def simulate_affordability():
+    """
+    사용자의 연소득, 목표 지역, 저축률, 현재 자산을 바탕으로
+    선택 지역의 평균 주택 구입에 걸리는 실질 연수 및 금융 시뮬레이션을 계산합니다.
+    """
+    try:
+        data = request.get_json() or {}
+        annual_income = float(data.get("annual_income", 6000))
+        target_region = str(data.get("target_region", "전국")).strip()
+        savings_rate = float(data.get("savings_rate", 30)) / 100.0  # 예: 0.3
+        current_savings = float(data.get("current_savings", 0))
+        stats = data.get("stats", {})
+
+        # 지역별 가격 데이터 매칭
+        region_list = stats.get("region_pir_list", [])
+        matched_region = None
+        for r in region_list:
+            if r.get("region") == target_region:
+                matched_region = r
+                break
+
+        # 기본값 (매칭 안 될 시 전체 평균 적용)
+        kpi = stats.get("kpi", {})
+        default_price = kpi.get("avg_price_manwon", 70000)
+
+        # 산점도 데이터에서 해당 지역의 평균 가격 산출 시도
+        scatter_points = stats.get("scatter_chart", [])
+        region_prices = [p["y"] for p in scatter_points if p.get("region") == target_region]
+        if region_prices:
+            avg_price = int(sum(region_prices) / len(region_prices))
+        else:
+            avg_price = default_price
+
+        # 계산 로직
+        needed_amount = max(0, avg_price - current_savings)
+        annual_savings = max(100.0, annual_income * savings_rate)
+        monthly_savings = int(annual_savings / 12)
+
+        # 100% 소득 저축 시 (순수 PIR)
+        pure_pir = round(avg_price / max(1.0, annual_income), 1)
+
+        # 실제 저축률 적용 시 소요 기간
+        real_years_float = round(needed_amount / annual_savings, 1)
+        years_int = int(real_years_float)
+        months_int = int(round((real_years_float - years_int) * 12))
+
+        # DSR 40% 기준 30년 만기 주담대(금리 4.2% 가정) 예상 대출 한도
+        # 원리금 균등상환 약수 (대략 연소득의 약 6.5~7배 한도)
+        estimated_loan_limit = int(annual_income * 0.4 * 17) # 약 연소득의 6.8배
+        estimated_loan_limit = min(estimated_loan_limit, int(avg_price * 0.7)) # LTV 70% 제한
+
+        loan_assisted_needed = max(0, needed_amount - estimated_loan_limit)
+        loan_assisted_years = round(loan_assisted_needed / annual_savings, 1)
+        loan_years_int = int(loan_assisted_years)
+        loan_months_int = int(round((loan_assisted_years - loan_years_int) * 12))
+
+        # 주거 진입 난이도 평가
+        if real_years_float <= 5:
+            difficulty_level = "안정적 (매우 수월)"
+            difficulty_badge = "success"
+        elif real_years_float <= 12:
+            difficulty_level = "보통 (계획적 저축으로 진입 가능)"
+            difficulty_badge = "info"
+        elif real_years_float <= 20:
+            difficulty_level = "주의 (대출 활용 및 자산 증식 필요)"
+            difficulty_badge = "warning"
+        else:
+            difficulty_level = "고위험 (자력 구매 극히 난망 / 과부담)"
+            difficulty_badge = "danger"
+
+        result = {
+            "target_region": target_region,
+            "avg_price_manwon": avg_price,
+            "annual_income_manwon": int(annual_income),
+            "savings_rate_percent": int(savings_rate * 100),
+            "current_savings_manwon": int(current_savings),
+            "monthly_savings_manwon": monthly_savings,
+            "custom_pir": pure_pir,
+            "real_years": real_years_float,
+            "time_text": f"{years_int}년 {months_int}개월" if years_int > 0 else f"{months_int}개월",
+            "loan_limit_manwon": estimated_loan_limit,
+            "loan_assisted_years": loan_assisted_years,
+            "loan_time_text": f"{loan_years_int}년 {loan_months_int}개월" if loan_years_int > 0 else f"{loan_months_int}개월",
+            "difficulty_level": difficulty_level,
+            "difficulty_badge": difficulty_badge
+        }
+
+        return jsonify({"success": True, "result": result})
+
+    except Exception as e:
+        logger.error(f"Error in simulate_affordability: {str(e)}", exc_info=True)
+        return jsonify({"success": False, "error": f"시뮬레이션 연산 중 오류가 발생했습니다: {str(e)}"}), 500
+
+
+@app.route("/ask-ai", methods=["POST"])
+def ask_ai():
+    """
+    현재 분석된 부동산-소득 통계 데이터를 기반으로
+    사용자의 자연어 질문에 데이터 이코노미스트 관점에서 명쾌하게 답변합니다.
+    """
+    try:
+        data = request.get_json() or {}
+        question = str(data.get("question", "")).strip()
+        stats = data.get("stats", {})
+
+        if not question:
+            return jsonify({"success": False, "error": "질문 내용을 입력해 주세요."}), 400
+
+        kpi = stats.get("kpi", {})
+        quintile = stats.get("quintile_chart", {})
+        regions = stats.get("region_pir_list", [])
+
+        current_api_key = os.getenv("GEMINI_API_KEY", "").strip()
+
+        # 1. Gemini API 키가 있는 경우
+        if current_api_key and current_api_key != "your_gemini_api_key_here":
+            prompt = f"""
+당신은 대한민국 거시경제 및 부동산 시장을 전문 분석하는 AI 데이터 이코노미스트입니다.
+아래의 [실제 분석 통계 데이터셋]을 바탕으로 사용자의 자연어 질문에 친절하고 전문적이며 구체적인 숫자를 들어 신뢰감 있게 답변해 주십시오.
+
+[현재 분석 통계 데이터 요약]
+- 분석 표본 수: {kpi.get('total_records', 0):,}건
+- 전체 가구 연평균 소득: {kpi.get('avg_income_manwon', 0):,}만원
+- 전체 주택 평균 매매가: {kpi.get('avg_price_manwon', 0):,}만원 (중위: {kpi.get('median_price_manwon', 0):,}만원)
+- 전체 평균 PIR: {kpi.get('avg_pir', 0)}배
+- 소득 5분위 배율: {kpi.get('income_gap_ratio', 1.0)}배 / 주택 자산 5분위 배율: {kpi.get('asset_gap_ratio', 1.0)}배
+- 소득 분위별 PIR: {dict(zip(quintile.get('labels', []), quintile.get('pirs', [])))}
+- 지역별 PIR 랭킹: {[f"{r.get('region')}({r.get('pir')}배)" for r in regions[:6]]}
+
+[사용자 질문]
+"{question}"
+
+[답변 작성 지침]
+1. 사용자의 질문에 대해 핵심 결론을 첫 문장에서 명쾌하게 제시하세요.
+2. 위 통계 데이터의 구체적인 수치(소득, 집값, PIR 배수 등)를 직접 인용하여 근거를 뒷받침하세요.
+3. 경제학적 맥락(예: 저축률, 대출 DSR 규제, 금리 환경, 주거 사다리 등)을 비전문가도 이해하기 쉽게 비유를 들어 설명하세요.
+4. 마지막에는 질문자가 실생활에서 취할 수 있는 실천적이고 합리적인 가이드라인을 1~2문장으로 덧붙이세요.
+5. 마크다운(불릿, 볼드체 등)을 적절히 활용하여 읽기 편하게 포맷팅하세요.
+"""
+            try:
+                client = genai.Client(api_key=current_api_key)
+                response = client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=prompt
+                )
+                return jsonify({"success": True, "answer": response.text})
+            except Exception as gemini_err:
+                logger.warning(f"Gemini API call failed, switching to local smart answer: {gemini_err}")
+
+        # 2. API 키가 없거나 호출 실패 시 로컬 스마트 Q&A 엔진
+        answer = generate_local_smart_answer(question, kpi, quintile, regions)
+        return jsonify({"success": True, "answer": answer})
+
+    except Exception as e:
+        logger.error(f"Error in ask_ai: {str(e)}", exc_info=True)
+        return jsonify({"success": False, "error": f"답변 생성 중 오류가 발생했습니다: {str(e)}"}), 500
+
+
+def generate_local_smart_answer(question, kpi, quintile, regions):
+    """
+    API 키가 없더라도 질문 키워드와 통계 지표를 결합하여
+    매우 설득력 있고 전문적인 답변을 생성하는 지능형 로컬 Q&A 엔진
+    """
+    q_lower = question.lower()
+    avg_pir = kpi.get("avg_pir", 10.9)
+    avg_price = kpi.get("avg_price_manwon", 77000)
+    avg_income = kpi.get("avg_income_manwon", 7450)
+    income_gap = kpi.get("income_gap_ratio", 7.1)
+    asset_gap = kpi.get("asset_gap_ratio", 4.5)
+
+    top_region = regions[0]["region"] if regions else "수도권 주요지"
+    top_pir = regions[0]["pir"] if regions else avg_pir
+
+    if any(k in q_lower for k in ["pir", "배수", "의미", "기준", "un", "위험"]):
+        return f"""### 💡 PIR(소득 대비 주택가격 배수) 지표 분석 답변
+
+* **핵심 결론**: 현재 분석된 전체 평균 PIR은 **{avg_pir}배**로, 국제기구 권고치에 비해 **상당히 과부담된 수준**입니다.
+* **통계적 근거**:
+  - **UN-Habitat 및 세계은행의 적정 권고치**: **3.0 ~ 5.0배**
+  - **현재 데이터셋 평균치**: **{avg_pir}배** (적정 상한선 5.0배 대비 **약 {round(avg_pir/5.0, 1)}배** 초과)
+  - 이는 가구가 연간 소득(평균 {avg_income:,}만원)을 **단 1원도 쓰지 않고 {avg_pir}년간 전액 저축**해야 평균적인 주택({avg_price:,}만원)을 구입할 수 있음을 의미합니다.
+* **실생활 시사점**: 가계 평균 저축률(25~30%)을 고려하면 실제 소요 기간은 **{round(avg_pir / 0.25, 1)}년 이상**이 걸리므로, 금융 레버리지(대출) 관리와 분양가 상한제 주택 공략이 필수적입니다."""
+
+    elif any(k in q_lower for k in ["격차", "양극화", "불평등", "소득", "자산"]):
+        return f"""### ⚖️ 소득 격차 vs 주택 자산 양극화 분석 답변
+
+* **핵심 결론**: 데이터 실증 결과, **근로소득의 격차보다 주택 자산의 양극화가 훨씬 심각**한 구조적 불균형을 보이고 있습니다.
+* **주요 비교 지표**:
+  - **소득 5분위 배율**: **{income_gap}배** (상위 20% 소득 / 하위 20% 소득)
+  - **주택 자산 5분위 배율**: **{asset_gap}배** (상위 20% 집값 / 하위 20% 집값)
+* **경제학적 진단**:
+  - 실물 부동산 자산의 상승률(자본수익률 r)이 가계 임금 상승률(경제성장률 g)을 앞서면서, 근로소득만으로는 상위 자산 계층으로 진입하기 어려운 **'주거 사다리 단절 현상'**이 뚜렷하게 관측됩니다."""
+
+    elif any(k in q_lower for k in ["지역", "서울", "경기", "지방", "어디", "추천"]):
+        return f"""### 🗺️ 권역별 주거 부담도 및 접근성 평가 답변
+
+* **가장 주거 부담이 높은 지역**: **{top_region}** (PIR **{top_pir}배**)
+* **권역별 주거 진입 장벽**:
+  - 상위권 지역({top_region} 등)의 경우 PIR이 **{top_pir}배**에 달해 청년 및 신규 가구의 자력 진입이 극히 어렵습니다.
+  - 반면, 상대적으로 PIR이 5~8배 수준인 **경기 외곽 및 지방 대도시권**은 계획적인 저축과 저리 정책 대출(디딤돌·신생아 특례)을 결합할 경우 **7~10년 내외의 현실적 진입**이 가능합니다.
+* **실천 조언**: 본인의 현재 소득 수준과 가용 자산을 감안하여, 대시보드의 **[🎯 맞춤형 내 집 마련 시뮬레이터]** 탭에서 관심 지역별 필요 기간을 정밀 시뮬레이션해 보시는 것을 추천합니다."""
+
+    else:
+        return f"""### 📊 데이터 기반 종합 분석 답변
+
+* **질문 요지**: "{question}"
+* **현재 데이터 실증 요약**:
+  - 총 분석 표본: **{kpi.get('total_records', 0):,}건**
+  - 전체 평균 소득: **{avg_income:,}만원** / 평균 주택 매매가: **{avg_price:,}만원**
+  - 전체 평균 PIR: **{avg_pir}배** (최고 권역: {top_region} {top_pir}배)
+* **전문가 조언**:
+  - 현재 주택 가격은 가구 연소득 대비 높은 배수를 형성하고 있으므로, 월 소득 대비 원리금 상환 비율(DSR)이 30%를 넘지 않는 범위에서 안전한 자산 포트폴리오를 구성하는 것이 권장됩니다.
+  - 더 구체적인 질문(예: 특정 지역 비교, 내 소득 기준 연수 등)을 남겨주시면 더욱 상세히 해설해 드리겠습니다."""
+
+
 if __name__ == "__main__":
     logger.info("Starting Flask Server on http://127.0.0.1:5000")
     app.run(host="127.0.0.1", port=5000, debug=True)

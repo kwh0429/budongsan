@@ -7,6 +7,7 @@ let chartInstances = {
     scatterPlot: null
 };
 let currentReportMarkdown = "";
+let latestAnalysisStats = null; // 현재 분석된 최신 데이터셋 통계 보관
 
 document.addEventListener("DOMContentLoaded", () => {
     // DOM 요소 캐싱
@@ -38,6 +39,32 @@ document.addEventListener("DOMContentLoaded", () => {
     const btnCopyReport = document.getElementById("btnCopyReport");
     const btnDownloadReport = document.getElementById("btnDownloadReport");
     const previewTableBody = document.getElementById("previewTableBody");
+
+    // 시뮬레이터 관련 DOM 요소
+    const simIncomeInput = document.getElementById("simIncomeInput");
+    const simMonthlyIncomeDisplay = document.getElementById("simMonthlyIncomeDisplay");
+    const simTargetRegion = document.getElementById("simTargetRegion");
+    const simSavingsRate = document.getElementById("simSavingsRate");
+    const savingsRateDisplay = document.getElementById("savingsRateDisplay");
+    const simMonthlySavingsEstimate = document.getElementById("simMonthlySavingsEstimate");
+    const simCurrentSavings = document.getElementById("simCurrentSavings");
+    const btnCalculateAffordability = document.getElementById("btnCalculateAffordability");
+
+    // 시뮬레이터 결과 DOM 요소
+    const simDifficultyBadge = document.getElementById("simDifficultyBadge");
+    const simRealYearsResult = document.getElementById("simRealYearsResult");
+    const simDurationSub = document.getElementById("simDurationSub");
+    const simAvgPriceResult = document.getElementById("simAvgPriceResult");
+    const simCustomPirResult = document.getElementById("simCustomPirResult");
+    const simAnnualSavingsResult = document.getElementById("simAnnualSavingsResult");
+    const simLoanAssistedResult = document.getElementById("simLoanAssistedResult");
+    const simAdviceText = document.getElementById("simAdviceText");
+
+    // AI Q&A 채팅 관련 DOM 요소
+    const chatMessagesContainer = document.getElementById("chatMessagesContainer");
+    const chatInputText = document.getElementById("chatInputText");
+    const btnSendChat = document.getElementById("btnSendChat");
+    const quickChips = document.querySelectorAll(".quick-chip");
 
     /* ================= 1. 파일 누적 업로드 & 드래그 앤 드롭 ================= */
 
@@ -229,6 +256,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     /* ================= 5. 대시보드 뷰 렌더링 ================= */
     function renderDashboardView(data) {
+        latestAnalysisStats = data;
         resultSection.classList.remove("hidden");
 
         const kpi = data.kpi;
@@ -250,6 +278,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
         // 원본 데이터 미리보기 표 렌더링
         renderPreviewTable(data.table_preview || []);
+
+        // 시뮬레이터 지역 드롭다운 옵션 자동 채우기 및 최초 1회 계산
+        populateSimulatorRegions(data.region_pir_list);
+        executeSimulatorCalculation();
 
         // 첫 번째 탭 활성화 & 스크롤 이동
         document.querySelector('.tab-btn[data-tab="tabOverview"]').click();
@@ -569,5 +601,178 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function hideNotice() {
         noticeBanner.classList.add("hidden");
+    }
+
+    /* ================= 10. 맞춤형 내 집 마련 시뮬레이터 로직 ================= */
+
+    function populateSimulatorRegions(regions) {
+        simTargetRegion.innerHTML = `<option value="전국">전체 평균 기준</option>`;
+        if (regions && regions.length > 0) {
+            regions.forEach((r) => {
+                const opt = document.createElement("option");
+                opt.value = r.region;
+                opt.textContent = `${r.region} (평균 PIR ${r.pir}배)`;
+                simTargetRegion.appendChild(opt);
+            });
+        }
+    }
+
+    // 소득 입력 시 월 환산액 동적 갱신
+    simIncomeInput.addEventListener("input", () => {
+        const income = parseFloat(simIncomeInput.value) || 0;
+        simMonthlyIncomeDisplay.textContent = Math.round(income / 12).toLocaleString();
+        updateSavingsEstimate();
+    });
+
+    // 저축률 슬라이더 실시간 갱신
+    simSavingsRate.addEventListener("input", () => {
+        savingsRateDisplay.textContent = simSavingsRate.value;
+        updateSavingsEstimate();
+    });
+
+    function updateSavingsEstimate() {
+        const income = parseFloat(simIncomeInput.value) || 0;
+        const rate = parseFloat(simSavingsRate.value) || 30;
+        const monthlySavings = Math.round((income * (rate / 100)) / 12);
+        simMonthlySavingsEstimate.textContent = monthlySavings.toLocaleString();
+    }
+
+    // 시뮬레이션 계산 실행
+    btnCalculateAffordability.addEventListener("click", executeSimulatorCalculation);
+
+    async function executeSimulatorCalculation() {
+        if (!latestAnalysisStats) return;
+
+        const income = parseFloat(simIncomeInput.value) || 6000;
+        const targetRegion = simTargetRegion.value;
+        const savingsRate = parseFloat(simSavingsRate.value) || 30;
+        const currentSavings = parseFloat(simCurrentSavings.value) || 0;
+
+        btnCalculateAffordability.disabled = true;
+        btnCalculateAffordability.textContent = "계산 중...";
+
+        try {
+            const res = await fetch("/simulate-affordability", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    annual_income: income,
+                    target_region: targetRegion,
+                    savings_rate: savingsRate,
+                    current_savings: currentSavings,
+                    stats: latestAnalysisStats
+                })
+            });
+
+            const resData = await res.json();
+            if (!res.ok || !resData.success) {
+                throw new Error(resData.error || "시뮬레이션 연산 실패");
+            }
+
+            const r = resData.result;
+            // 결과 화면 업데이트
+            simRealYearsResult.textContent = r.time_text;
+            simDurationSub.textContent = `매월 ${r.monthly_savings_manwon.toLocaleString()}만원씩 한 푼도 빼놓지 않고 순수 저축 시`;
+            simAvgPriceResult.textContent = `${r.avg_price_manwon.toLocaleString()}만원 (${(r.avg_price_manwon / 10000).toFixed(1)}억원)`;
+            simCustomPirResult.textContent = `${r.custom_pir}배`;
+            simAnnualSavingsResult.textContent = `${(r.monthly_savings_manwon * 12).toLocaleString()}만원`;
+            simLoanAssistedResult.textContent = `약 ${r.loan_time_text} (대출 ${r.loan_limit_manwon.toLocaleString()}만원 활용 시)`;
+
+            simDifficultyBadge.textContent = r.difficulty_level;
+            simDifficultyBadge.className = `badge ${r.difficulty_badge}`;
+
+            // AI 진단 코멘트
+            if (r.real_years <= 6) {
+                simAdviceText.textContent = `🎉 [매우 긍정적] 현재 설정하신 연소득(${income.toLocaleString()}만원)과 저축률(${savingsRate}%)은 목표 지역 주택 진입에 매우 유리한 안정권입니다. 시드머니(${currentSavings.toLocaleString()}만원)를 기반으로 우수한 입지를 선점할 수 있는 여력이 충분합니다.`;
+            } else if (r.real_years <= 14) {
+                simAdviceText.textContent = `📊 [현실적 궤도] 순수 저축 시 ${r.time_text}가 소요되지만, DSR 40% 한도 내 정책 모기지(최대 약 ${r.loan_limit_manwon.toLocaleString()}만원)를 전략적으로 병행할 경우 내 집 마련 소요 기간을 [${r.loan_time_text}] 수준으로 획기적으로 단축할 수 있습니다.`;
+            } else {
+                simAdviceText.textContent = `⚠️ [주거 과부담 경고] 목표 지역의 평균 주택 가격이 현재 소득 수준 대비 매우 높아 자력 진입에 ${r.time_text}의 장기 소요가 예상됩니다. 무리한 영끌보다는 인근의 실속형 거주지나 공공분양 청약(지분적립형 등)을 우선 탐색하는 포트폴리오 다변화를 권장합니다.`;
+            }
+
+        } catch (err) {
+            alert(`시뮬레이션 오류: ${err.message}`);
+        } finally {
+            btnCalculateAffordability.disabled = false;
+            btnCalculateAffordability.textContent = "⏱️ 실질 소요 기간 및 금융 시뮬레이션 계산";
+        }
+    }
+
+    /* ================= 11. AI 자연어 질의응답 (Q&A) 로직 ================= */
+
+    // 추천 질문 칩 클릭
+    quickChips.forEach((chip) => {
+        chip.addEventListener("click", () => {
+            const q = chip.getAttribute("data-question");
+            chatInputText.value = q;
+            sendChatMessage();
+        });
+    });
+
+    // 질문 전송 버튼 및 엔터 키
+    btnSendChat.addEventListener("click", sendChatMessage);
+    chatInputText.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            sendChatMessage();
+        }
+    });
+
+    async function sendChatMessage() {
+        const question = chatInputText.value.trim();
+        if (!question) return;
+
+        // 1. 사용자 말풍선 추가
+        appendChatBubble("user", "나의 질문", question);
+        chatInputText.value = "";
+
+        // 2. 로딩 말풍선 추가
+        const loadingId = "loadingBubble_" + Date.now();
+        appendChatBubble("ai", "AI 데이터 이코노미스트", `<div class="spinner-small" style="display:inline-block; margin-right:8px;"></div>데이터셋을 분석하여 답변을 구성하고 있습니다...`, loadingId);
+
+        try {
+            const res = await fetch("/ask-ai", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    question: question,
+                    stats: latestAnalysisStats || {}
+                })
+            });
+
+            const resData = await res.json();
+            if (!res.ok || !resData.success) {
+                throw new Error(resData.error || "답변을 가져오지 못했습니다.");
+            }
+
+            // 로딩 말풍선을 실제 답변으로 교체
+            const loadingBubble = document.getElementById(loadingId);
+            if (loadingBubble) {
+                const bodyEl = loadingBubble.querySelector(".bubble-body");
+                bodyEl.innerHTML = marked.parse(resData.answer);
+            }
+
+        } catch (err) {
+            const loadingBubble = document.getElementById(loadingId);
+            if (loadingBubble) {
+                const bodyEl = loadingBubble.querySelector(".bubble-body");
+                bodyEl.innerHTML = `<span style="color:var(--danger);">⚠️ 오류: ${err.message}</span>`;
+            }
+        } finally {
+            chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight;
+        }
+    }
+
+    function appendChatBubble(type, senderName, contentHtml, elementId = null) {
+        const bubble = document.createElement("div");
+        bubble.className = `chat-bubble ${type}`;
+        if (elementId) bubble.id = elementId;
+
+        bubble.innerHTML = `
+            <div class="bubble-sender">${senderName}</div>
+            <div class="bubble-body markdown-body">${contentHtml}</div>
+        `;
+        chatMessagesContainer.appendChild(bubble);
+        chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight;
     }
 });

@@ -787,8 +787,435 @@ body {
     background: #f1f5f9;
 }
 
-/* 유틸리티 */
-.hidden {
+/* ===== TAB 2: 맞춤형 시뮬레이터 스타일 ===== */
+.simulator-layout {
+    display: grid;
+    grid-template-columns: 1.1fr 1.3fr;
+    gap: 28px;
+    margin-bottom: 40px;
+}
+
+.sim-input-card, .sim-result-card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-xl);
+    padding: 32px;
+    box-shadow: var(--shadow-md);
+}
+
+.sim-input-card .card-header {
+    margin-bottom: 24px;
+}
+
+.badge-tag {
+    display: inline-block;
+    font-size: 0.75rem;
+    font-weight: 800;
+    color: var(--brand-accent);
+    background: var(--brand-accent-light);
+    padding: 3px 10px;
+    border-radius: 9999px;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+}
+
+.sim-input-card h3 {
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: var(--text-primary);
+    margin-bottom: 6px;
+}
+
+.sim-input-card .card-sub {
+    font-size: 0.88rem;
+    color: var(--text-muted);
+}
+
+.sim-form {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.form-group label {
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+    display: flex;
+    justify-content: space-between;
+}
+
+.label-hint {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    font-weight: normal;
+}
+
+.input-with-unit {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.input-with-unit input {
+    width: 100%;
+    padding: 12px 60px 12px 16px;
+    font-size: 1.05rem;
+    font-weight: 700;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.input-with-unit input:focus {
+    border-color: var(--brand-primary);
+}
+
+.input-with-unit .unit-text {
+    position: absolute;
+    right: 16px;
+    font-weight: 700;
+    color: var(--text-muted);
+    font-size: 0.95rem;
+}
+
+.input-desc {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+}
+
+.custom-select {
+    padding: 12px 16px;
+    font-size: 1rem;
+    font-weight: 600;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    outline: none;
+    background: #fff;
+    cursor: pointer;
+}
+
+.custom-select:focus {
+    border-color: var(--brand-primary);
+}
+
+.slider-label-wrap {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.slider-value-display {
+    font-size: 1.05rem;
+    font-weight: 800;
+    color: var(--brand-primary);
+}
+
+.custom-slider {
+    width: 100%;
+    height: 8px;
+    border-radius: 4px;
+    background: #e2e8f0;
+    outline: none;
+    cursor: pointer;
+    accent-color: var(--brand-primary);
+}
+
+.btn.full-width {
+    width: 100%;
+}
+
+/* 시뮬레이션 결과 카드 */
+.sim-result-card {
+    background: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%);
+    border: 1px solid #c7d2fe;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+}
+
+.sim-result-card .result-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.sim-result-card h4 {
+    font-size: 1.15rem;
+    font-weight: 800;
+    color: var(--text-primary);
+}
+
+.main-duration-box {
+    background: #0f172a;
+    color: #ffffff;
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    text-align: center;
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.15);
+}
+
+.main-duration-box .box-label {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #94a3b8;
+    display: block;
+    margin-bottom: 6px;
+}
+
+.main-duration-box .years-num {
+    font-size: 2.5rem;
+    font-weight: 900;
+    color: #38bdf8;
+    letter-spacing: -0.5px;
+}
+
+.main-duration-box .box-sub {
+    font-size: 0.82rem;
+    color: #cbd5e1;
+    display: block;
+    margin-top: 6px;
+}
+
+.sim-metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+}
+
+.sim-metric-item {
+    background: #ffffff;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 14px 16px;
+}
+
+.sim-metric-item.highlight-metric {
+    border-color: #f59e0b;
+    background: #fffbeb;
+}
+
+.sim-metric-item .m-label {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    display: block;
+    margin-bottom: 4px;
+}
+
+.sim-metric-item .m-val {
+    font-size: 1.15rem;
+    font-weight: 800;
+    color: var(--text-primary);
+}
+
+.sim-metric-item.highlight-metric .m-val {
+    color: #b45309;
+}
+
+.sim-advice-box {
+    background: var(--brand-accent-light);
+    border: 1px solid #c7d2fe;
+    border-radius: var(--radius-md);
+    padding: 18px 20px;
+}
+
+.advice-title {
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: var(--brand-accent);
+    margin-bottom: 6px;
+}
+
+.advice-content {
+    font-size: 0.92rem;
+    color: #334155;
+    line-height: 1.7;
+}
+
+/* ===== TAB 3: AI 자연어 질의응답 (Q&A) 스타일 ===== */
+.chat-system-layout {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-xl);
+    padding: 32px;
+    box-shadow: var(--shadow-md);
+    margin-bottom: 40px;
+    display: flex;
+    flex-direction: column;
+    min-height: 600px;
+}
+
+.chat-header-bar {
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 16px;
+    margin-bottom: 16px;
+}
+
+.chat-title-group {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.chat-bot-icon {
+    font-size: 2rem;
+}
+
+.chat-title-group h3 {
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: var(--text-primary);
+}
+
+.chat-title-group p {
+    font-size: 0.88rem;
+    color: var(--text-muted);
+}
+
+.quick-questions-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+}
+
+.quick-title {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--text-muted);
+}
+
+.quick-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.quick-chip {
+    background: #f1f5f9;
+    border: 1px solid var(--border-color);
+    border-radius: 9999px;
+    padding: 6px 14px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.quick-chip:hover {
+    background: var(--brand-primary-light);
+    color: var(--brand-primary);
+    border-color: #bfdbfe;
+    transform: translateY(-1px);
+}
+
+/* 대화 메시지 영역 */
+.chat-messages-container {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    padding: 16px 8px;
+    margin-bottom: 20px;
+    max-height: 480px;
+}
+
+.chat-bubble {
+    display: flex;
+    flex-direction: column;
+    max-width: 82%;
+    animation: fadeIn 0.25s ease-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.chat-bubble.ai {
+    align-self: flex-start;
+}
+
+.chat-bubble.user {
+    align-self: flex-end;
+}
+
+.bubble-sender {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+    padding: 0 4px;
+}
+
+.chat-bubble.user .bubble-sender {
+    text-align: right;
+}
+
+.bubble-body {
+    padding: 16px 20px;
+    border-radius: var(--radius-lg);
+    font-size: 0.98rem;
+    line-height: 1.7;
+}
+
+.chat-bubble.ai .bubble-body {
+    background: #f8fafc;
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    border-top-left-radius: 4px;
+}
+
+.chat-bubble.user .bubble-body {
+    background: var(--brand-primary);
+    color: #ffffff;
+    border-top-right-radius: 4px;
+    font-weight: 500;
+}
+
+/* 질문 입력 바 */
+.chat-input-bar {
+    display: flex;
+    gap: 12px;
+    background: #f8fafc;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: 8px 12px;
+}
+
+.chat-input-bar input {
+    flex: 1;
+    background: none;
+    border: none;
+    outline: none;
+    font-size: 1rem;
+    padding: 8px 10px;
+    color: var(--text-primary);
+}
+
+.chat-input-bar .btn {
+    padding: 10px 24px;
+    flex-shrink: 0;
+}
+
+/* 반응형 모바일 */
+@media (max-width: 900px) {
+    .simulator-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
     display: none !important;
 }
 
