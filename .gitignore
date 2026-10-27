@@ -1,0 +1,20 @@
+# 가상환경
+venv/
+
+# 환경변수 및 비밀 API 키
+.env
+
+# 파이썬 캐시 파일
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# 사용자 업로드 임시 파일
+uploads/
+
+# 에디터 및 OS 설정 파일
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
