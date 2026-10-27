@@ -560,6 +560,131 @@ def ai_insight():
             return jsonify({"success": False, "error": f"AI 분석 리포트 생성 중 오류가 발생했습니다: {str(e)}"}), 500
 
 
+@app.route("/simulate-mobility-gap", methods=["POST"])
+def simulate_mobility_gap():
+    """
+    소득 분위 상향 이동 속도(임금/소득 상승률 g) vs
+    부동산 상위 분위 가격 상승 속도(자본수익률 r) 간의 시계열 추격 시뮬레이션을 수행합니다.
+    (피케티의 r > g 실증 분석 모델)
+    """
+    try:
+        data = request.get_json() or {}
+        stats = data.get("stats", {})
+        kpi = stats.get("kpi", {})
+        quintile = stats.get("quintile_chart", {})
+
+        # 1. 초기 매개변수 설정
+        start_income = float(data.get("start_income", kpi.get("avg_income_manwon", 6500))) # 현재 연소득 (만원)
+        income_growth_rate = float(data.get("income_growth_rate", 5.0)) / 100.0           # 연간 소득 성장률 (예: 5%)
+        
+        # 목표 주택가격 (기본값: 소득 5분위 상위 평균 또는 지정가)
+        top_prices = quintile.get("prices", [139000])
+        default_target_house_price = top_prices[-1] if top_prices else 150000
+        target_house_price = float(data.get("target_house_price", default_target_house_price)) # 목표 상위 집값 (만원)
+        
+        house_growth_rate = float(data.get("house_growth_rate", 7.0)) / 100.0             # 상위 주택가격 연간 상승률 (예: 7%)
+        savings_rate = float(data.get("savings_rate", 35.0)) / 100.0                     # 연소득 저축률 (예: 35%)
+        current_wealth = float(data.get("current_wealth", 5000.0))                        # 현재 보유 순자산 (만원)
+        safe_yield_rate = float(data.get("safe_yield_rate", 3.5)) / 100.0                # 저축 자산의 안전 운용 수익률 (예: 3.5%)
+        sim_years = int(data.get("sim_years", 15))                                       # 시뮬레이션 기간 (년)
+
+        # 2. 연도별 시계열 시뮬레이션 루프
+        years_labels = []
+        incomes_series = []
+        wealth_series = []
+        house_price_series = []
+        gap_series = []
+        pir_series = []
+
+        cur_income = start_income
+        cur_wealth = current_wealth
+        cur_house = target_house_price
+
+        crossover_year = None
+        min_gap = cur_house - cur_wealth
+
+        for y in range(sim_years + 1):
+            years_labels.append(f"{y}년차" if y > 0 else "현재(0년)")
+            incomes_series.append(int(round(cur_income)))
+            wealth_series.append(int(round(cur_wealth)))
+            house_price_series.append(int(round(cur_house)))
+
+            current_gap = cur_house - cur_wealth
+            gap_series.append(int(round(current_gap)))
+            pir_series.append(round(cur_house / max(1.0, cur_income), 1))
+
+            if current_gap <= 0 and crossover_year is None:
+                crossover_year = y
+
+            if current_gap < min_gap:
+                min_gap = current_gap
+
+            # 다음 해 상태 전이
+            if y < sim_years:
+                # 자산 복리 증식 + 그 해 저축액 납입
+                annual_saved = cur_income * savings_rate
+                cur_wealth = (cur_wealth * (1.0 + safe_yield_rate)) + annual_saved
+                cur_income = cur_income * (1.0 + income_growth_rate)
+                cur_house = cur_house * (1.0 + house_growth_rate)
+
+        # 3. 진단 및 결론 판정
+        initial_gap = int(round(target_house_price - current_wealth))
+        final_gap = gap_series[-1]
+        gap_change_ratio = round(final_gap / max(1, initial_gap), 2) if initial_gap > 0 else 1.0
+
+        is_caught_up = crossover_year is not None or final_gap <= 0
+        r_minus_g = round((house_growth_rate - income_growth_rate) * 100, 1)
+
+        if is_caught_up:
+            status_verdict = f"추격 성공 (약 {crossover_year}년차에 도달 가능)"
+            status_badge = "success"
+            analysis_summary = (
+                f"🎉 **[주거 사다리 진입 성공]** 사용자의 높은 소득 성장률(연 {round(income_growth_rate*100, 1)}%)과 "
+                f"지속적인 저축({round(savings_rate*100)}%)이 상위 부동산 상승률(연 {round(house_growth_rate*100, 1)}%)을 "
+                f"앞질러, 약 **{crossover_year}년차**에 목표 상위 주택을 자력으로 취득할 수 있는 골든 크로스가 발생합니다."
+            )
+        elif r_minus_g > 0:
+            status_verdict = f"격차 확대 (사다리 단절, r > g 위험)"
+            status_badge = "danger"
+            analysis_summary = (
+                f"🚨 **[피케티의 역설: r > g 자산 격차 심화]** 소득이 매년 {round(income_growth_rate*100, 1)}%씩 오르더라도, "
+                f"상위 주택 가격 상승 속도(연 {round(house_growth_rate*100, 1)}%)가 더 빨라 "
+                f"필요 자금 격차가 현재 **{initial_gap:,}만원**에서 {sim_years}년 뒤 **{final_gap:,}만원**으로 "
+                f"약 **{gap_change_ratio}배 더 벌어집니다**. 순수 근로소득 저축만으로는 상급지 진입이 불가능함을 시증합니다."
+            )
+        else:
+            status_verdict = "격차 축소 중 (달성 연한 추가 필요)"
+            status_badge = "warning"
+            analysis_summary = (
+                f"⏳ **[추격 중이나 기간 부족]** 소득 증가 속도가 집값 상승률을 앞서 자산 격차가 "
+                f"{initial_gap:,}만원에서 {final_gap:,}만원으로 좁혀지고 있으나, "
+                f"{sim_years}년 이내에 완전 도달하기에는 시드가 부족합니다. 대출 레버리지 또는 투자 수익률 제고가 요구됩니다."
+            )
+
+        sim_response = {
+            "years_labels": years_labels,
+            "incomes": incomes_series,
+            "wealth": wealth_series,
+            "house_prices": house_price_series,
+            "gaps": gap_series,
+            "pirs": pir_series,
+            "crossover_year": crossover_year,
+            "initial_gap": initial_gap,
+            "final_gap": final_gap,
+            "gap_change_ratio": gap_change_ratio,
+            "r_minus_g": r_minus_g,
+            "status_verdict": status_verdict,
+            "status_badge": status_badge,
+            "analysis_summary": analysis_summary
+        }
+
+        return jsonify({"success": True, "result": sim_response})
+
+    except Exception as e:
+        logger.error(f"Error in simulate_mobility_gap: {str(e)}", exc_info=True)
+        return jsonify({"success": False, "error": f"상관관계 시뮬레이션 중 오류가 발생했습니다: {str(e)}"}), 500
+
+
 @app.route("/simulate-affordability", methods=["POST"])
 def simulate_affordability():
     """

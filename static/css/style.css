@@ -787,7 +787,216 @@ body {
     background: #f1f5f9;
 }
 
-/* ===== TAB 2: 맞춤형 시뮬레이터 스타일 ===== */
+/* ===== TAB: 소득 vs 집값 추격 시뮬레이터 스타일 ===== */
+.mobility-sim-container {
+    margin-bottom: 40px;
+}
+
+.mobility-header {
+    margin-bottom: 24px;
+}
+
+.mobility-header h2 {
+    font-size: 1.45rem;
+    font-weight: 800;
+    color: var(--text-primary);
+    margin-bottom: 6px;
+    letter-spacing: -0.4px;
+}
+
+.mobility-grid {
+    display: grid;
+    grid-template-columns: 380px 1fr;
+    gap: 28px;
+}
+
+.mobility-control-card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-xl);
+    padding: 28px;
+    box-shadow: var(--shadow-md);
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    height: fit-content;
+}
+
+.mobility-control-card h4 {
+    font-size: 1.15rem;
+    font-weight: 800;
+    color: var(--text-primary);
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 12px;
+}
+
+.mobility-display-card {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+/* 판정 배너 */
+.verdict-banner {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: 20px 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    box-shadow: var(--shadow-sm);
+}
+
+.verdict-banner.danger {
+    background: #fff5f5;
+    border-color: #fca5a5;
+}
+
+.verdict-banner.success {
+    background: #f0fdf4;
+    border-color: #86efac;
+}
+
+.verdict-icon {
+    font-size: 2.2rem;
+}
+
+.verdict-badge {
+    font-size: 0.75rem;
+    font-weight: 800;
+    padding: 3px 10px;
+    border-radius: 9999px;
+    display: inline-block;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+}
+
+.verdict-badge.danger {
+    background: var(--danger);
+    color: #ffffff;
+}
+
+.verdict-badge.success {
+    background: var(--success);
+    color: #ffffff;
+}
+
+.verdict-badge.warning {
+    background: var(--warning);
+    color: #ffffff;
+}
+
+.verdict-title {
+    font-size: 1.2rem;
+    font-weight: 800;
+    color: var(--text-primary);
+}
+
+/* 3종 KPI Row */
+.mob-kpi-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+}
+
+.mob-kpi-item {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 18px 20px;
+    box-shadow: var(--shadow-sm);
+}
+
+.mob-kpi-item.highlight {
+    border-color: var(--brand-accent);
+    background: linear-gradient(135deg, #ffffff 0%, var(--brand-accent-light) 100%);
+}
+
+.m-kpi-label {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    display: block;
+    margin-bottom: 6px;
+}
+
+.m-kpi-val {
+    font-size: 1.7rem;
+    font-weight: 900;
+    color: var(--text-primary);
+    line-height: 1.2;
+}
+
+.m-kpi-unit {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-left: 2px;
+}
+
+.m-kpi-sub {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    display: block;
+    margin-top: 4px;
+}
+
+/* 차트 박스 */
+.mob-chart-box {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-xl);
+    padding: 24px;
+    box-shadow: var(--shadow-md);
+}
+
+.mob-chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 18px;
+}
+
+.mob-chart-body {
+    position: relative;
+    height: 380px;
+    width: 100%;
+}
+
+/* 학술적 진단 박스 */
+.economic-diagnosis-box {
+    background: var(--bg-surface);
+    border: 1px solid #c7d2fe;
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    box-shadow: var(--shadow-sm);
+}
+
+.diag-header {
+    font-size: 1rem;
+    font-weight: 800;
+    color: var(--brand-accent);
+    margin-bottom: 12px;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 8px;
+}
+
+.diag-text {
+    font-size: 0.95rem;
+    line-height: 1.8;
+    color: #1e293b;
+}
+
+@media (max-width: 1024px) {
+    .mobility-grid {
+        grid-template-columns: 1fr;
+    }
+    .mob-kpi-row {
+        grid-template-columns: 1fr;
+    }
+}
+
 .simulator-layout {
     display: grid;
     grid-template-columns: 1.1fr 1.3fr;

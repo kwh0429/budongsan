@@ -96,6 +96,7 @@
                 <!-- 상단 탭 네비게이션 -->
                 <nav class="dashboard-tabs">
                     <button class="tab-btn active" data-tab="tabOverview">📊 핵심 지표 & 시각화 차트</button>
+                    <button class="tab-btn" data-tab="tabMobility">⚡ 소득 상승 vs 상위 집값 추격 시뮬레이터</button>
                     <button class="tab-btn" data-tab="tabSimulator">🎯 맞춤형 내 집 마련 계산기</button>
                     <button class="tab-btn" data-tab="tabChat">💬 AI 자연어 질의응답 (Q&A)</button>
                     <button class="tab-btn" data-tab="tabReport">📑 심층 경제분석 리포트</button>
@@ -221,7 +222,142 @@
                     </div>
                 </section>
 
-                <!-- TAB 2: 맞춤형 내 집 마련 시뮬레이터 -->
+                <!-- TAB 2: 소득 분위 상향 이동 vs 상위 집값 상승 상관관계 시뮬레이터 -->
+                <section id="tabMobility" class="tab-pane">
+                    <div class="mobility-sim-container">
+                        <div class="mobility-header">
+                            <div>
+                                <span class="badge-tag">Piketty r > g Simulation</span>
+                                <h2>소득 분위 상향 이동 속도 vs 상위 부동산 가격 상승 속도 추격 시뮬레이터</h2>
+                                <p class="panel-desc">직장 승진 및 소득 증가율(g)과 상위 부동산 자본수익률(r) 간의 상관관계를 시계열로 비교하여 '주거 사다리'의 단절 여부를 실증합니다.</p>
+                            </div>
+                        </div>
+
+                        <!-- 2열 그리드: 좌측 컨트롤 / 우측 차트 & 요약 -->
+                        <div class="mobility-grid">
+                            <!-- 좌측 컨트롤 패널 -->
+                            <div class="mobility-control-card">
+                                <h4>⚙️ 시뮬레이션 매개변수 설정</h4>
+                                
+                                <div class="form-group">
+                                    <label for="mobIncomeInput">내 현재 가구 연소득 (출발점)</label>
+                                    <div class="input-with-unit">
+                                        <input type="number" id="mobIncomeInput" value="6500" min="500" max="100000" step="100">
+                                        <span class="unit-text">만원</span>
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <div class="slider-label-wrap">
+                                        <label for="mobIncomeGrowth">내 연간 소득 성장률 (g)</label>
+                                        <span class="slider-value-display"><strong id="mobIncomeGrowthDisplay">5.0</strong>%</span>
+                                    </div>
+                                    <input type="range" id="mobIncomeGrowth" min="1.0" max="15.0" step="0.5" value="5.0" class="custom-slider">
+                                    <span class="input-desc">승진, 연봉 인상, 이직 등에 따른 가계소득 증가 속도</span>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="mobTargetHousePrice">목표 상위 부동산 가격 (도달점)</label>
+                                    <div class="input-with-unit">
+                                        <input type="number" id="mobTargetHousePrice" value="150000" min="1000" max="1000000" step="500">
+                                        <span class="unit-text">만원</span>
+                                    </div>
+                                    <span class="input-desc">기본값: 데이터셋 내 소득 5분위 상위 평균 주택가격 (15억원)</span>
+                                </div>
+
+                                <div class="form-group">
+                                    <div class="slider-label-wrap">
+                                        <label for="mobHouseGrowth">상위 부동산 연간 상승률 (r)</label>
+                                        <span class="slider-value-display"><strong id="mobHouseGrowthDisplay">7.0</strong>%</span>
+                                    </div>
+                                    <input type="range" id="mobHouseGrowth" min="1.0" max="15.0" step="0.5" value="7.0" class="custom-slider">
+                                    <span class="input-desc">상급지 핵심 자산의 복리 자본수익률 (r)</span>
+                                </div>
+
+                                <div class="form-group">
+                                    <div class="slider-label-wrap">
+                                        <label for="mobSavingsRate">연소득 저축률 (%)</label>
+                                        <span class="slider-value-display"><strong id="mobSavingsRateDisplay">35</strong>%</span>
+                                    </div>
+                                    <input type="range" id="mobSavingsRate" min="10" max="70" step="5" value="35" class="custom-slider">
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="mobCurrentWealth">현재 보유 초기 순자산</label>
+                                    <div class="input-with-unit">
+                                        <input type="number" id="mobCurrentWealth" value="5000" min="0" max="500000" step="500">
+                                        <span class="unit-text">만원</span>
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="mobSimYears">시뮬레이션 관측 기간</label>
+                                    <select id="mobSimYears" class="custom-select">
+                                        <option value="5">5년 단기 추격</option>
+                                        <option value="10">10년 중기 추격</option>
+                                        <option value="15" selected>15년 장기 추격 (기본)</option>
+                                        <option value="20">20년 생애주기 추격</option>
+                                        <option value="30">30년 은퇴 시점까지 추격</option>
+                                    </select>
+                                </div>
+
+                                <button id="btnRunMobilitySim" type="button" class="btn btn-primary full-width">
+                                    <span>⚡ 시계열 상관관계 시뮬레이션 재연산</span>
+                                </button>
+                            </div>
+
+                            <!-- 우측 차트 및 진단 결과 -->
+                            <div class="mobility-display-card">
+                                <!-- 상태 판정 배너 -->
+                                <div class="verdict-banner" id="mobVerdictBanner">
+                                    <span class="verdict-icon">🚨</span>
+                                    <div>
+                                        <span class="verdict-badge danger" id="mobVerdictBadge">격차 확대 (r > g)</span>
+                                        <h3 class="verdict-title" id="mobVerdictTitle">상위 자산 상승 속도가 소득 증가 속도를 압도하고 있습니다</h3>
+                                    </div>
+                                </div>
+
+                                <!-- 3종 핵심 요약 지표 카드 -->
+                                <div class="mob-kpi-row">
+                                    <div class="mob-kpi-item">
+                                        <span class="m-kpi-label">수익률 스프레드 (r - g)</span>
+                                        <div class="m-kpi-val"><span id="mobSpreadVal">+2.0</span><span class="m-kpi-unit">%p</span></div>
+                                        <span class="m-kpi-sub">자산 상승률 > 소득 증가율</span>
+                                    </div>
+                                    <div class="mob-kpi-item">
+                                        <span class="m-kpi-label">필요 자산 갭 변화</span>
+                                        <div class="m-kpi-val"><span id="mobGapChangeVal">1.6배</span></div>
+                                        <span class="m-kpi-sub">초기 <span id="mobInitialGap">14.5억</span> &rarr; 최종 <span id="mobFinalGap">23.2억</span></span>
+                                    </div>
+                                    <div class="mob-kpi-item highlight">
+                                        <span class="m-kpi-label">골든 크로스 (도달 시점)</span>
+                                        <div class="m-kpi-val"><span id="mobCrossoverVal">도달 불가</span></div>
+                                        <span class="m-kpi-sub">자력 상급지 진입 여부</span>
+                                    </div>
+                                </div>
+
+                                <!-- 시계열 추격 차트 -->
+                                <div class="mob-chart-box">
+                                    <div class="mob-chart-header">
+                                        <span class="chart-title">연도별 목표 주택가격 vs 내 누적 자산 형성 추세선</span>
+                                        <span class="chart-type-tag">시계열 추격 차트</span>
+                                    </div>
+                                    <div class="chart-body mob-chart-body">
+                                        <canvas id="chartMobilityGap"></canvas>
+                                    </div>
+                                </div>
+
+                                <!-- 학술적 진단 총평 -->
+                                <div class="economic-diagnosis-box">
+                                    <div class="diag-header">🏛️ 피케티(Piketty) 자본수익률 모델 기반 실증 진단</div>
+                                    <div id="mobAnalysisSummary" class="diag-text markdown-body">
+                                        <!-- 동적 텍스트 삽입 -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
                 <section id="tabSimulator" class="tab-pane">
                     <div class="simulator-layout">
                         <!-- 입력 폼 카드 -->

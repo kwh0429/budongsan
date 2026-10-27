@@ -4,7 +4,8 @@ let chartInstances = {
     quintileCompare: null,
     regionPir: null,
     savingsYears: null,
-    scatterPlot: null
+    scatterPlot: null,
+    mobilityGap: null
 };
 let currentReportMarkdown = "";
 let latestAnalysisStats = null; // 현재 분석된 최신 데이터셋 통계 보관
@@ -282,6 +283,7 @@ document.addEventListener("DOMContentLoaded", () => {
         // 시뮬레이터 지역 드롭다운 옵션 자동 채우기 및 최초 1회 계산
         populateSimulatorRegions(data.region_pir_list);
         executeSimulatorCalculation();
+        executeMobilitySimulation(); // 추격 시뮬레이터 최초 1회 자동 계산
 
         // 첫 번째 탭 활성화 & 스크롤 이동
         document.querySelector('.tab-btn[data-tab="tabOverview"]').click();
@@ -763,16 +765,196 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
-    function appendChatBubble(type, senderName, contentHtml, elementId = null) {
-        const bubble = document.createElement("div");
-        bubble.className = `chat-bubble ${type}`;
-        if (elementId) bubble.id = elementId;
+    /* ================= 12. 소득 vs 집값 추격 시뮬레이터 로직 ================= */
+    const mobIncomeInput = document.getElementById("mobIncomeInput");
+    const mobIncomeGrowth = document.getElementById("mobIncomeGrowth");
+    const mobIncomeGrowthDisplay = document.getElementById("mobIncomeGrowthDisplay");
+    const mobTargetHousePrice = document.getElementById("mobTargetHousePrice");
+    const mobHouseGrowth = document.getElementById("mobHouseGrowth");
+    const mobHouseGrowthDisplay = document.getElementById("mobHouseGrowthDisplay");
+    const mobSavingsRate = document.getElementById("mobSavingsRate");
+    const mobSavingsRateDisplay = document.getElementById("mobSavingsRateDisplay");
+    const mobCurrentWealth = document.getElementById("mobCurrentWealth");
+    const mobSimYears = document.getElementById("mobSimYears");
+    const btnRunMobilitySim = document.getElementById("btnRunMobilitySim");
 
-        bubble.innerHTML = `
-            <div class="bubble-sender">${senderName}</div>
-            <div class="bubble-body markdown-body">${contentHtml}</div>
-        `;
-        chatMessagesContainer.appendChild(bubble);
-        chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight;
+    const mobVerdictBanner = document.getElementById("mobVerdictBanner");
+    const mobVerdictBadge = document.getElementById("mobVerdictBadge");
+    const mobVerdictTitle = document.getElementById("mobVerdictTitle");
+    const mobSpreadVal = document.getElementById("mobSpreadVal");
+    const mobGapChangeVal = document.getElementById("mobGapChangeVal");
+    const mobInitialGap = document.getElementById("mobInitialGap");
+    const mobFinalGap = document.getElementById("mobFinalGap");
+    const mobCrossoverVal = document.getElementById("mobCrossoverVal");
+    const mobAnalysisSummary = document.getElementById("mobAnalysisSummary");
+
+    // 슬라이더 실시간 갱신
+    if (mobIncomeGrowth) {
+        mobIncomeGrowth.addEventListener("input", () => {
+            mobIncomeGrowthDisplay.textContent = parseFloat(mobIncomeGrowth.value).toFixed(1);
+        });
+    }
+    if (mobHouseGrowth) {
+        mobHouseGrowth.addEventListener("input", () => {
+            mobHouseGrowthDisplay.textContent = parseFloat(mobHouseGrowth.value).toFixed(1);
+        });
+    }
+    if (mobSavingsRate) {
+        mobSavingsRate.addEventListener("input", () => {
+            mobSavingsRateDisplay.textContent = mobSavingsRate.value;
+        });
+    }
+
+    if (btnRunMobilitySim) {
+        btnRunMobilitySim.addEventListener("click", executeMobilitySimulation);
+    }
+
+    async function executeMobilitySimulation() {
+        if (!latestAnalysisStats) return;
+
+        const income = parseFloat(mobIncomeInput.value) || 6500;
+        const incomeGrowth = parseFloat(mobIncomeGrowth.value) || 5.0;
+        const targetPrice = parseFloat(mobTargetHousePrice.value) || 150000;
+        const houseGrowth = parseFloat(mobHouseGrowth.value) || 7.0;
+        const savingsRate = parseFloat(mobSavingsRate.value) || 35.0;
+        const currentWealth = parseFloat(mobCurrentWealth.value) || 5000;
+        const simYears = parseInt(mobSimYears.value, 10) || 15;
+
+        btnRunMobilitySim.disabled = true;
+        btnRunMobilitySim.textContent = "시뮬레이션 연산 중...";
+
+        try {
+            const res = await fetch("/simulate-mobility-gap", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    start_income: income,
+                    income_growth_rate: incomeGrowth,
+                    target_house_price: targetPrice,
+                    house_growth_rate: houseGrowth,
+                    savings_rate: savingsRate,
+                    current_wealth: currentWealth,
+                    sim_years: simYears,
+                    stats: latestAnalysisStats
+                })
+            });
+
+            const resData = await res.json();
+            if (!res.ok || !resData.success) {
+                throw new Error(resData.error || "추격 시뮬레이션 실패");
+            }
+
+            const r = resData.result;
+
+            // 1. 상태 배너 및 배지 업데이트
+            mobVerdictBadge.textContent = r.status_verdict;
+            mobVerdictBadge.className = `verdict-badge ${r.status_badge}`;
+            mobVerdictBanner.className = `verdict-banner ${r.status_badge}`;
+
+            if (r.status_badge === "success") {
+                mobVerdictBanner.querySelector(".verdict-icon").textContent = "🎉";
+                mobVerdictTitle.textContent = `축하합니다! 약 ${r.crossover_year}년차에 목표 상위 부동산을 자력 취득할 수 있습니다`;
+            } else if (r.status_badge === "danger") {
+                mobVerdictBanner.querySelector(".verdict-icon").textContent = "🚨";
+                mobVerdictTitle.textContent = `상위 자산 상승 속도(r)가 소득 증가 속도(g)를 압도하여 격차가 계속 확대됩니다`;
+            } else {
+                mobVerdictBanner.querySelector(".verdict-icon").textContent = "⏳";
+                mobVerdictTitle.textContent = `격차가 좁혀지고 있으나, 관측 기간 내 완전한 골든 크로스에는 도달하지 못했습니다`;
+            }
+
+            // 2. KPI 요약 수치
+            mobSpreadVal.textContent = (r.r_minus_g > 0 ? `+${r.r_minus_g}` : `${r.r_minus_g}`);
+            mobGapChangeVal.textContent = `${r.gap_change_ratio}배`;
+            mobInitialGap.textContent = `${(r.initial_gap / 10000).toFixed(1)}억`;
+            mobFinalGap.textContent = `${(r.final_gap / 10000).toFixed(1)}억`;
+            mobCrossoverVal.textContent = r.crossover_year ? `${r.crossover_year}년차 도달` : "도달 불가";
+
+            // 3. 차트 렌더링 (Chart.js 복합 시계열 차트)
+            renderChartMobilityGap(r);
+
+            // 4. 학술적 총평 마크다운 렌더링
+            mobAnalysisSummary.innerHTML = marked.parse(r.analysis_summary);
+
+        } catch (err) {
+            alert(`추격 시뮬레이션 오류: ${err.message}`);
+        } finally {
+            btnRunMobilitySim.disabled = false;
+            btnRunMobilitySim.textContent = "⚡ 시계열 상관관계 시뮬레이션 재연산";
+        }
+    }
+
+    function renderChartMobilityGap(rData) {
+        const ctx = document.getElementById("chartMobilityGap").getContext("2d");
+        if (chartInstances.mobilityGap) chartInstances.mobilityGap.destroy();
+
+        chartInstances.mobilityGap = new Chart(ctx, {
+            type: "line",
+            data: {
+                labels: rData.years_labels,
+                datasets: [
+                    {
+                        type: "line",
+                        label: "목표 상위 주택가격 (만원)",
+                        data: rData.house_prices,
+                        borderColor: "rgba(239, 68, 68, 1)",
+                        backgroundColor: "rgba(239, 68, 68, 0.1)",
+                        borderWidth: 3,
+                        pointRadius: 4,
+                        pointHoverRadius: 7,
+                        tension: 0.2,
+                        order: 1
+                    },
+                    {
+                        type: "line",
+                        label: "내 누적 순자산 형성선 (만원)",
+                        data: rData.wealth,
+                        borderColor: "rgba(37, 99, 235, 1)",
+                        backgroundColor: "rgba(37, 99, 235, 0.15)",
+                        borderWidth: 3,
+                        pointRadius: 4,
+                        pointHoverRadius: 7,
+                        tension: 0.2,
+                        fill: true,
+                        order: 2
+                    },
+                    {
+                        type: "bar",
+                        label: "필요 추가 자산 갭 (만원)",
+                        data: rData.gaps.map(g => Math.max(0, g)),
+                        backgroundColor: "rgba(148, 163, 184, 0.4)",
+                        borderRadius: 4,
+                        order: 3
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: "index",
+                    intersect: false
+                },
+                plugins: {
+                    legend: { position: "top", labels: { font: { weight: "bold" } } },
+                    tooltip: {
+                        callbacks: {
+                            label: (ctx) => {
+                                const val = ctx.raw;
+                                return `${ctx.dataset.label}: ${val.toLocaleString()}만원 (${(val / 10000).toFixed(1)}억원)`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: (v) => `${(v / 10000).toFixed(0)}억`
+                        }
+                    }
+                }
+            }
+        });
     }
 });
+
