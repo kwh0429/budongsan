@@ -3,178 +3,284 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI 소득-부동산 가격 분포 분석 대시보드</title>
-    <!-- Google Fonts -->
+    <title>AI 부동산-소득 분포 및 자산 양극화 인텔리전스 대시보드</title>
+    <!-- Pretendard 폰트 -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <!-- Chart.js CDN -->
+    <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <!-- Chart.js CDN 및 어노테이션 플러그인 -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- Marked.js CDN (마크다운 렌더링) -->
+    <!-- Marked.js (마크다운 파서) -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <!-- 커스텀 CSS -->
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
-    <div class="app-container">
-        <!-- 헤더 영역 -->
-        <header class="app-header">
-            <div class="header-badge">AI Data Analytics Dashboard</div>
-            <h1>국내 소득수준별 부동산가격 분포 및 자산격차 분석기</h1>
-            <p class="subtitle">소득 대비 주택가격(PIR)과 자산 양극화 지표를 시각화하고, Gemini AI가 알기 쉽게 심층 해설해 드립니다.</p>
-        </header>
-
-        <!-- 데이터 입력 & 컨트롤 카드 -->
-        <section class="control-section">
-            <div class="control-card">
-                <div class="upload-box">
-                    <label for="csvFileInput" class="file-label">
-                        <span class="upload-icon">📂</span>
-                        <span class="upload-text">CSV 또는 Excel(.xlsx) 데이터 파일 선택 (다중 선택 가능)</span>
-                        <span class="upload-sub">여러 권역이나 연도별 파일을 한 번에 드래그하거나 선택하여 통합 분석하세요</span>
-                    </label>
-                    <input type="file" id="csvFileInput" accept=".csv, .xlsx, .xls" multiple>
-                    <div id="fileChipsContainer" class="file-chips-container hidden"></div>
-                    <span id="selectedFileName" class="selected-file-name">선택된 파일 없음</span>
-                </div>
-                <div class="button-group">
-                    <button id="btnUploadAnalyze" class="btn btn-primary">
-                        <span>📊 파일 데이터 분석</span>
-                    </button>
-                    <button id="btnSampleAnalyze" class="btn btn-secondary">
-                        <span>⚡ 샘플 데이터로 즉시 체험</span>
-                    </button>
+    <div class="app-layout">
+        <!-- 상단 네비게이션 헤더 -->
+        <header class="top-navbar">
+            <div class="nav-brand">
+                <span class="brand-logo">🏛️</span>
+                <div class="brand-info">
+                    <span class="brand-title">K-Housing & Income Intelligence</span>
+                    <span class="brand-sub">국내 소득수준별 부동산 분포 및 자산 양극화 실증분석 시스템</span>
                 </div>
             </div>
-        </section>
+            <div class="nav-status">
+                <span class="status-indicator live"></span>
+                <span class="status-text">Analysis Engine Ready</span>
+                <span class="engine-tag">Gemini 2.5 & Econometric Model</span>
+            </div>
+        </header>
 
-        <!-- 로딩 인디케이터 -->
-        <div id="loadingIndicator" class="loading-container hidden">
-            <div class="spinner"></div>
-            <p id="loadingMessage" class="loading-message">데이터를 정제하고 통계 지표를 연산하는 중입니다...</p>
+        <!-- 메인 컨테이너 -->
+        <div class="main-content">
+            <!-- 1. 다중 파일 업로드 및 제어 섹션 -->
+            <section class="upload-control-panel">
+                <div class="panel-header">
+                    <h2>📁 데이터 파일 통합 분석기 (다중 파일 누적 지원)</h2>
+                    <p class="panel-desc">지역별 실거래가, 시세, 소득 통계 파일(CSV / Excel)을 여러 개 끌어다 놓거나 선택하여 한 번에 병합 분석하세요.</p>
+                </div>
+
+                <!-- 드래그 앤 드롭 존 -->
+                <div id="dropZone" class="drop-zone">
+                    <div class="drop-zone-content">
+                        <div class="drop-icon">📤</div>
+                        <div class="drop-text-main">파일들을 여기로 드래그하여 끌어다 놓거나, 클릭하여 선택하세요</div>
+                        <div class="drop-text-sub">CSV, XLS, XLSX 파일 지원 &bull; 여러 번 나누어 추가하셔도 목록에 계속 누적됩니다</div>
+                    </div>
+                    <input type="file" id="csvFileInput" accept=".csv, .xlsx, .xls" multiple style="display: none;">
+                </div>
+
+                <!-- 누적 파일 목록 큐 (Queue) -->
+                <div id="fileQueueSection" class="file-queue-section hidden">
+                    <div class="queue-header">
+                        <span class="queue-title">📋 분석 대기 중인 파일 (<strong id="queueCount">0</strong>개)</span>
+                        <button id="btnClearQueue" class="btn-text-danger" type="button">전체 비우기</button>
+                    </div>
+                    <div id="fileCardsList" class="file-cards-grid">
+                        <!-- 동적으로 파일 카드가 들어감 -->
+                    </div>
+                </div>
+
+                <!-- 분석 액션 버튼 그룹 -->
+                <div class="action-buttons-group">
+                    <button id="btnUploadAnalyze" class="btn btn-primary" type="button">
+                        <span class="btn-icon">⚡</span>
+                        <span>선택한 모든 파일 통합 분석 실행</span>
+                    </button>
+                    <button id="btnSampleAnalyze" class="btn btn-secondary" type="button">
+                        <span class="btn-icon">📊</span>
+                        <span>기본 검증 샘플 데이터로 즉시 체험</span>
+                    </button>
+                </div>
+            </section>
+
+            <!-- 로딩 상태 알림 -->
+            <div id="loadingIndicator" class="loading-container hidden">
+                <div class="pulse-spinner"></div>
+                <div class="loading-info">
+                    <h3 id="loadingTitle">데이터 처리 및 통계 모델 연산 중</h3>
+                    <p id="loadingMessage">다중 데이터셋을 병합하고 소득 5분위 및 PIR 지표를 계산하고 있습니다...</p>
+                </div>
+            </div>
+
+            <!-- 상태 안내 배너 -->
+            <div id="noticeBanner" class="alert-banner hidden">
+                <span id="noticeIcon" class="alert-icon">ℹ️</span>
+                <span id="noticeMessage" class="alert-text"></span>
+                <button id="btnDismissNotice" class="alert-close">&times;</button>
+            </div>
+
+            <!-- 결과 영역 (분석 완료 시 노출) -->
+            <div id="resultSection" class="result-container hidden">
+                <!-- 상단 탭 네비게이션 -->
+                <nav class="dashboard-tabs">
+                    <button class="tab-btn active" data-tab="tabOverview">📊 핵심 지표 & 시각화 차트</button>
+                    <button class="tab-btn" data-tab="tabReport">📑 심층 경제분석 리포트</button>
+                    <button class="tab-btn" data-tab="tabRawData">🔍 병합 데이터 원본 표</button>
+                </nav>
+
+                <!-- TAB 1: 통합 대시보드 (KPI + 4종 차트) -->
+                <section id="tabOverview" class="tab-pane active">
+                    <!-- KPI 요약 카드 그리드 -->
+                    <div class="kpi-grid">
+                        <div class="kpi-card">
+                            <div class="kpi-top">
+                                <span class="kpi-title">총 분석 표본 수</span>
+                                <span class="kpi-badge">전체 유효 가구</span>
+                            </div>
+                            <div class="kpi-value"><span id="kpiTotalRecords">-</span><span class="kpi-unit">건</span></div>
+                            <span class="kpi-sub" id="kpiFileSummary">병합된 파일 1개 기준</span>
+                        </div>
+
+                        <div class="kpi-card highlight-danger">
+                            <div class="kpi-top">
+                                <span class="kpi-title">전체 평균 PIR</span>
+                                <span class="kpi-badge danger">주거 과부담</span>
+                            </div>
+                            <div class="kpi-value"><span id="kpiAvgPir">-</span><span class="kpi-unit">배 (년)</span></div>
+                            <span class="kpi-sub">UN 권고치(3~5배) 대폭 상회</span>
+                        </div>
+
+                        <div class="kpi-card">
+                            <div class="kpi-top">
+                                <span class="kpi-title">전체 평균 가구소득</span>
+                                <span class="kpi-badge">연간 기준</span>
+                            </div>
+                            <div class="kpi-value"><span id="kpiAvgIncome">-</span><span class="kpi-unit">만원</span></div>
+                            <span class="kpi-sub">월 환산: 약 <span id="kpiMonthlyIncome">-</span>만원</span>
+                        </div>
+
+                        <div class="kpi-card">
+                            <div class="kpi-top">
+                                <span class="kpi-title">평균 주택가격 (중위가)</span>
+                                <span class="kpi-badge">매매가</span>
+                            </div>
+                            <div class="kpi-value"><span id="kpiAvgPrice">-</span><span class="kpi-unit">만원</span></div>
+                            <span class="kpi-sub">중위 가격: <span id="kpiMedianPrice">-</span>만원</span>
+                        </div>
+
+                        <div class="kpi-card warning">
+                            <div class="kpi-top">
+                                <span class="kpi-title">소득 5분위 배율</span>
+                                <span class="kpi-badge warning">소득 격차</span>
+                            </div>
+                            <div class="kpi-value"><span id="kpiIncomeGap">-</span><span class="kpi-unit">배</span></div>
+                            <span class="kpi-sub">상위 20% vs 하위 20%</span>
+                        </div>
+
+                        <div class="kpi-card danger">
+                            <div class="kpi-top">
+                                <span class="kpi-title">주택 자산 5분위 배율</span>
+                                <span class="kpi-badge danger">자산 양극화</span>
+                            </div>
+                            <div class="kpi-value"><span id="kpiAssetGap">-</span><span class="kpi-unit">배</span></div>
+                            <span class="kpi-sub">근로소득 대비 자산 격차 심화</span>
+                        </div>
+                    </div>
+
+                    <!-- 4종 프로페셔널 차트 그리드 -->
+                    <div class="charts-container">
+                        <!-- 차트 1: 분위별 소득 vs 집값 복합 대조 차트 -->
+                        <div class="chart-card">
+                            <div class="chart-card-header">
+                                <div>
+                                    <h3 class="chart-title">소득 분위별 평균 소득 vs 주택가격 대조</h3>
+                                    <p class="chart-desc">1분위(저소득)부터 5분위(고소득)까지의 연간 소득과 부동산 자산 규모 비교</p>
+                                </div>
+                                <span class="chart-type-tag">복합 막대 차트</span>
+                            </div>
+                            <div class="chart-body">
+                                <canvas id="chartQuintileCompare"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- 차트 2: 권역별 PIR 랭킹 수평 바 차트 -->
+                        <div class="chart-card">
+                            <div class="chart-card-header">
+                                <div>
+                                    <h3 class="chart-title">주요 권역별 주거 부담도 (PIR 랭킹)</h3>
+                                    <p class="chart-desc">권역별 평균 PIR 지표 (UN 권고 적정 기준선 5.0배 대조)</p>
+                                </div>
+                                <span class="chart-type-tag">수평 바 차트</span>
+                            </div>
+                            <div class="chart-body">
+                                <canvas id="chartRegionPir"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- 차트 3: 분위별 내 집 마련 소요 기간 (이론 vs 실질 저축) -->
+                        <div class="chart-card">
+                            <div class="chart-card-header">
+                                <div>
+                                    <h3 class="chart-title">분위별 내 집 마련 소요 기간 (PIR vs 실질 저축 25%)</h3>
+                                    <p class="chart-desc">소득 전액 저축 시 vs 실제 평균 저축률(25%) 반영 시 필요 연수 비교</p>
+                                </div>
+                                <span class="chart-type-tag">소요 연수 비교</span>
+                            </div>
+                            <div class="chart-body">
+                                <canvas id="chartSavingsYears"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- 차트 4: 소득 대비 주택가격 상관관계 산점도 -->
+                        <div class="chart-card">
+                            <div class="chart-card-header">
+                                <div>
+                                    <h3 class="chart-title">소득 수준에 따른 주택가격 분포 및 상관관계</h3>
+                                    <p class="chart-desc">개별 표본의 연소득과 주택가격 분포 (마우스 호버 시 상세 정보 표시)</p>
+                                </div>
+                                <span class="chart-type-tag">산점도 (Scatter Plot)</span>
+                            </div>
+                            <div class="chart-body">
+                                <canvas id="chartScatterPlot"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- TAB 2: 심층 경제분석 리포트 -->
+                <section id="tabReport" class="tab-pane">
+                    <div class="report-box">
+                        <div class="report-top-bar">
+                            <div class="report-meta">
+                                <span class="report-badge">🏛️ KDI / 한국은행 거시경제 분석 모델</span>
+                                <h2 class="report-main-title">대한민국 소득수준별 주택가격 분포 및 자산 양극화 심층 경제분석 보고서</h2>
+                            </div>
+                            <div class="report-btn-group">
+                                <button id="btnCopyReport" class="btn btn-outline" type="button">📋 텍스트 복사</button>
+                                <button id="btnDownloadReport" class="btn btn-outline" type="button">💾 Markdown 저장</button>
+                            </div>
+                        </div>
+
+                        <div id="aiLoadingIndicator" class="ai-loading-box hidden">
+                            <div class="spinner-small"></div>
+                            <span>실증 통계 데이터를 기반으로 전문 경제분석 보고서를 렌더링하고 있습니다...</span>
+                        </div>
+
+                        <article id="reportContentArea" class="markdown-body">
+                            <!-- 마크다운 보고서 내용 -->
+                        </article>
+                    </div>
+                </section>
+
+                <!-- TAB 3: 병합 데이터 원본 표 -->
+                <section id="tabRawData" class="tab-pane">
+                    <div class="data-table-card">
+                        <div class="table-header">
+                            <div>
+                                <h3>통합 병합 데이터셋 미리보기 (상위 15개 행)</h3>
+                                <p>업로드된 모든 파일의 데이터가 표준화 및 병합되어 분석에 사용된 모습입니다.</p>
+                            </div>
+                            <span class="badge" id="tablePreviewBadge">15행 표시 중</span>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="custom-data-table">
+                                <thead>
+                                    <tr>
+                                        <th>순번</th>
+                                        <th>권역 / 지역</th>
+                                        <th>소득 분위</th>
+                                        <th>연간 가구소득 (만원)</th>
+                                        <th>주택 매매가격 (만원)</th>
+                                        <th>PIR 배수 (연)</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="previewTableBody">
+                                    <!-- 동적 삽입 -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+            </div>
         </div>
 
-        <!-- 에러 메시지 배너 -->
-        <div id="errorBanner" class="error-banner hidden">
-            <span class="error-icon">⚠️</span>
-            <span id="errorMessage" class="error-text"></span>
-            <button id="btnDismissError" class="btn-dismiss">&times;</button>
-        </div>
-
-        <!-- 분석 결과 컨테이너 (분석 전에는 숨김) -->
-        <main id="resultSection" class="result-section hidden">
-            <!-- 1. 핵심 지표 KPI 카드 그리드 -->
-            <section class="kpi-section">
-                <h2 class="section-title">📌 핵심 요약 지표 (KPI)</h2>
-                <div class="kpi-grid">
-                    <div class="kpi-card">
-                        <span class="kpi-label">분석 표본 수</span>
-                        <div class="kpi-value"><span id="kpiTotalRecords">-</span><span class="unit">건</span></div>
-                        <span class="kpi-sub">수집된 소득/가격 표본</span>
-                    </div>
-                    <div class="kpi-card highlight">
-                        <span class="kpi-label">평균 PIR (주거 부담 연수)</span>
-                        <div class="kpi-value"><span id="kpiAvgPir">-</span><span class="unit">배</span></div>
-                        <span class="kpi-sub">소득 전액 저축 시 구매 소요 기간</span>
-                    </div>
-                    <div class="kpi-card">
-                        <span class="kpi-label">전체 평균 연소득</span>
-                        <div class="kpi-value"><span id="kpiAvgIncome">-</span><span class="unit">만원</span></div>
-                        <span class="kpi-sub">연간 가구 평균 소득</span>
-                    </div>
-                    <div class="kpi-card">
-                        <span class="kpi-label">평균 주택가격 (중위가)</span>
-                        <div class="kpi-value"><span id="kpiAvgPrice">-</span><span class="unit">만원</span></div>
-                        <span class="kpi-sub">중위: <span id="kpiMedianPrice">-</span>만원</span>
-                    </div>
-                    <div class="kpi-card warning">
-                        <span class="kpi-label">소득 격차 (5분위/1분위)</span>
-                        <div class="kpi-value"><span id="kpiIncomeGap">-</span><span class="unit">배</span></div>
-                        <span class="kpi-sub">상위 20% vs 하위 20%</span>
-                    </div>
-                    <div class="kpi-card danger">
-                        <span class="kpi-label">주택 자산 격차 (5분위/1분위)</span>
-                        <div class="kpi-value"><span id="kpiAssetGap">-</span><span class="unit">배</span></div>
-                        <span class="kpi-sub">자산 양극화 심화 지표</span>
-                    </div>
-                </div>
-            </section>
-
-            <!-- 2. 시각화 인터랙티브 차트 그리드 -->
-            <section class="charts-section">
-                <h2 class="section-title">📈 데이터 시각화 대시보드</h2>
-                <div class="charts-grid">
-                    <!-- 차트 1: 분위별 소득 vs 집값 대조 -->
-                    <div class="chart-card">
-                        <div class="chart-header">
-                            <h3>소득 분위별 가구소득 vs 주택가격</h3>
-                            <span class="badge">막대 대조 차트</span>
-                        </div>
-                        <div class="chart-wrapper">
-                            <canvas id="quintileComparisonChart"></canvas>
-                        </div>
-                    </div>
-
-                    <!-- 차트 2: 분위별 PIR 지표 -->
-                    <div class="chart-card">
-                        <div class="chart-header">
-                            <h3>소득 분위별 내 집 마련 소요 기간 (PIR)</h3>
-                            <span class="badge badge-accent">PIR 배수</span>
-                        </div>
-                        <div class="chart-wrapper">
-                            <canvas id="pirChart"></canvas>
-                        </div>
-                    </div>
-
-                    <!-- 차트 3: 소득 vs 주택가격 산점도 -->
-                    <div class="chart-card full-width">
-                        <div class="chart-header">
-                            <h3>소득 수준에 따른 주택가격 분포 및 상관관계</h3>
-                            <span class="badge">산점도 (Scatter Plot)</span>
-                        </div>
-                        <div class="chart-wrapper scatter-wrapper">
-                            <canvas id="scatterChart"></canvas>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- 3. Gemini AI 심층 인사이트 리포트 영역 -->
-            <section class="ai-report-section">
-                <div class="report-header">
-                    <div>
-                        <div class="ai-badge">🤖 Powered by Gemini 2.5 Flash</div>
-                        <h2 class="section-title mb-0">AI 데이터 이코노미스트의 심층 해설 리포트</h2>
-                    </div>
-                    <div class="report-actions">
-                        <button id="btnCopyReport" class="btn btn-outline" title="보고서 클립보드 복사">
-                            📋 텍스트 복사
-                        </button>
-                        <button id="btnDownloadReport" class="btn btn-outline" title="마크다운 파일 다운로드">
-                            💾 Markdown 다운로드
-                        </button>
-                    </div>
-                </div>
-
-                <div class="report-card">
-                    <div id="aiLoading" class="ai-loading hidden">
-                        <div class="spinner-small"></div>
-                        <span>Gemini AI가 데이터를 거시경제적 관점에서 분석하고 리포트를 작성 중입니다...</span>
-                    </div>
-                    <div id="aiReportContent" class="markdown-body">
-                        <!-- AI 해설 마크다운 렌더링 영역 -->
-                    </div>
-                </div>
-            </section>
-        </main>
-
-        <!-- 푸터 -->
         <footer class="app-footer">
-            <p>AI IT Housing & Income Analyzer &copy; 2026. Built with Flask, Pandas, Chart.js & Gemini API.</p>
+            <p>K-Housing & Income Intelligence Platform &copy; 2026. Built with Flask, Pandas, Chart.js & Gemini 2.5 Flash.</p>
         </footer>
     </div>
 
-    <!-- 커스텀 JS -->
     <script src="/static/js/app.js"></script>
 </body>
 </html>
